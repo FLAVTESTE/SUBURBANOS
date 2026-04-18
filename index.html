@@ -1,0 +1,1991 @@
+import { useState, useMemo, useRef, useEffect, createContext, useContext, useCallback, memo } from "react";
+import { AreaChart, Area, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line } from "recharts";
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PIZZARIA SUBURBANOS — DATA LAYER
+   Pizzaria bairro São Paulo · estilo italiano popular · delivery + salão
+═══════════════════════════════════════════════════════════════════════ */
+
+// Cardápio: pizzas + bordas + bebidas + sobremesas
+// Preço médio pizzas ~R$65 · margem bruta média ~37%
+// baseVol = unidades/dia médio (antes fatores sazonais/dia-da-semana)
+const RAW_PRODUCTS = [
+  // PIZZAS TRADICIONAIS (8)
+  { id:1,  name:"Margherita",           cat:"Pizzas Tradicionais", price:52,  vc:28, baseVol:5, role:"Volume",      rating:4.6, nRat:312 },
+  { id:2,  name:"Calabresa",            cat:"Pizzas Tradicionais", price:58,  vc:30, baseVol:7, role:"Carro-chefe", rating:4.8, nRat:489 },
+  { id:3,  name:"Portuguesa",           cat:"Pizzas Tradicionais", price:62,  vc:34, baseVol:4, role:"Volume",      rating:4.5, nRat:274 },
+  { id:4,  name:"Frango c/ Catupiry",  cat:"Pizzas Tradicionais", price:65,  vc:36, baseVol:6, role:"Volume",      rating:4.7, nRat:401 },
+  { id:5,  name:"Quatro Queijos",       cat:"Pizzas Tradicionais", price:70,  vc:40, baseVol:4, role:"Volume",      rating:4.9, nRat:356 },
+  { id:6,  name:"Pepperoni",            cat:"Pizzas Tradicionais", price:72,  vc:42, baseVol:3, role:"Volume",      rating:4.7, nRat:218 },
+  { id:7,  name:"Mussarela",            cat:"Pizzas Tradicionais", price:48,  vc:24, baseVol:4, role:"Volume",      rating:4.3, nRat:198 },
+  { id:8,  name:"Napolitana",           cat:"Pizzas Tradicionais", price:56,  vc:30, baseVol:2, role:"Sazonal",     rating:4.2, nRat:87  },
+  // PIZZAS ESPECIAIS (7)
+  { id:9,  name:"Suburbanos Especial",  cat:"Pizzas Especiais",    price:92,  vc:48, baseVol:3, role:"Carro-chefe", rating:4.9, nRat:267 },
+  { id:10, name:"Trufada de Cogumelos", cat:"Pizzas Especiais",    price:98,  vc:62, baseVol:1, role:"Premium",     rating:4.8, nRat:94  },
+  { id:11, name:"Camarão ao Alho",      cat:"Pizzas Especiais",    price:105, vc:58, baseVol:1, role:"Premium",     rating:4.9, nRat:71  },
+  { id:12, name:"Burrata & Tomate",     cat:"Pizzas Especiais",    price:88,  vc:46, baseVol:2, role:"Premium",     rating:4.8, nRat:112 },
+  { id:13, name:"Carne Seca c/ Abóbora",cat:"Pizzas Especiais",   price:82,  vc:44, baseVol:2, role:"Diferencial", rating:4.7, nRat:148 },
+  { id:14, name:"Frango Defumado",      cat:"Pizzas Especiais",    price:78,  vc:42, baseVol:2, role:"Diferencial", rating:4.6, nRat:133 },
+  { id:15, name:"Veggie Supreme",       cat:"Pizzas Especiais",    price:75,  vc:72, baseVol:1, role:"Diferencial", rating:3.7, nRat:29  }, // margem NEGATIVA
+  // BORDAS RECHEADAS (3)
+  { id:16, name:"Borda Catupiry",       cat:"Bordas Recheadas",    price:12,  vc:4,  baseVol:8, role:"Complemento", rating:4.8, nRat:520 },
+  { id:17, name:"Borda Cheddar",        cat:"Bordas Recheadas",    price:12,  vc:4,  baseVol:5, role:"Complemento", rating:4.6, nRat:310 },
+  { id:18, name:"Borda Chocolate",      cat:"Bordas Recheadas",    price:14,  vc:5,  baseVol:2, role:"Complemento", rating:4.4, nRat:178 },
+  // BEBIDAS (6)
+  { id:19, name:"Refrigerante Lata",    cat:"Bebidas",             price:8,   vc:3,  baseVol:14,role:"Volume",      rating:4.0, nRat:210 },
+  { id:20, name:"Cerveja Long Neck",    cat:"Bebidas",             price:14,  vc:5,  baseVol:8, role:"Volume",      rating:4.5, nRat:312 },
+  { id:21, name:"Suco Natural",         cat:"Bebidas",             price:12,  vc:4,  baseVol:4, role:"Volume",      rating:4.6, nRat:180 },
+  { id:22, name:"Água Mineral",         cat:"Bebidas",             price:6,   vc:2,  baseVol:10,role:"Volume",      rating:4.1, nRat:95  },
+  { id:23, name:"Vinho da Casa (taça)", cat:"Bebidas",             price:24,  vc:8,  baseVol:3, role:"Premium",     rating:4.4, nRat:132 },
+  { id:24, name:"Coca-Cola 600ml",      cat:"Bebidas",             price:10,  vc:4,  baseVol:10,role:"Volume",      rating:4.2, nRat:178 },
+  // SOBREMESAS (4)
+  { id:25, name:"Pizza de Nutella",     cat:"Sobremesas",          price:42,  vc:14, baseVol:3, role:"Volume",      rating:4.9, nRat:289 },
+  { id:26, name:"Pizza de Morango",     cat:"Sobremesas",          price:42,  vc:15, baseVol:2, role:"Volume",      rating:4.8, nRat:201 },
+  { id:27, name:"Petit Gâteau",         cat:"Sobremesas",          price:28,  vc:9,  baseVol:2, role:"Complemento", rating:4.7, nRat:156 },
+  { id:28, name:"Sorvete 2 bolas",      cat:"Sobremesas",          price:16,  vc:5,  baseVol:2, role:"Complemento", rating:4.5, nRat:122 },
+];
+
+// Geração determinística de 365 dias de vendas
+const _genSales = () => {
+  const REF  = new Date("2025-02-18");
+  const DAYS = 365;
+
+  // Pizzaria: sexta e sábado são pico absoluto; domingo forte; seg/ter fraco
+  const WF = [1.30, 0.55, 0.62, 0.70, 0.88, 1.52, 1.78]; // dom(0)..sáb(6)
+
+  // Sazonalidade mensal SP: carnaval (fev) alto, julho (férias) moderado, dez (festas) pico
+  const MF = [1.10, 1.18, 0.96, 0.92, 0.90, 0.88, 0.95, 0.93, 0.98, 1.02, 1.08, 1.22];
+
+  // Sazonalidade por categoria
+  const CAT_SEASONAL = {
+    "Bebidas":              [1.15,1.20,1.00,0.95,0.90,0.85,0.90,0.92,0.96,1.00,1.05,1.18],
+    "Sobremesas":           [1.05,1.08,1.00,0.98,0.96,0.94,0.97,0.96,0.98,1.00,1.02,1.10],
+    "Pizzas Tradicionais":  [1.05,1.10,0.98,0.96,0.95,0.94,0.97,0.95,0.98,1.00,1.03,1.12],
+    "Pizzas Especiais":     [1.02,1.05,0.99,0.98,0.97,0.96,0.97,0.97,0.99,1.00,1.02,1.06],
+    "Bordas Recheadas":     [1.05,1.08,1.00,0.98,0.96,0.95,0.97,0.96,0.99,1.00,1.03,1.10],
+  };
+  const SAZONAL_MF = [1.00,1.05,0.95,0.92,0.90,0.88,0.90,0.89,0.93,0.97,1.00,1.04];
+
+  const rows = [];
+  RAW_PRODUCTS.forEach(p => {
+    for (let d = DAYS - 1; d >= 0; d--) {
+      const dt  = new Date(REF); dt.setDate(dt.getDate() - d);
+      const ds  = dt.toISOString().slice(0,10);
+      const dow = dt.getDay();
+      const mon = dt.getMonth();
+      const wf  = WF[dow];
+      const mf  = MF[mon];
+      const catMf = (CAT_SEASONAL[p.cat] || [])[mon] ?? 1.0;
+      const sazonalBonus = p.role === "Sazonal" ? SAZONAL_MF[mon] : 1.0;
+      const noise = (Math.sin(p.id * 61.3 + d * 23.1) * 0.5 + 0.5);
+      const ageDays = DAYS - 1 - d;
+      const trendFactor = p.baseVol > 1
+        ? 1 + ageDays * 0.00019
+        : 1 - ageDays * 0.00006;
+      const qty = Math.max(0, Math.round(
+        p.baseVol * wf * mf * catMf * sazonalBonus * (0.70 + noise * 0.60) * trendFactor
+      ));
+      if (qty > 0) rows.push({ pid: p.id, qty, date: ds });
+    }
+  });
+  return rows;
+};
+const ALL_SALES = _genSales();
+
+const DATES = {
+  ref:"2025-02-18", last90:"2024-11-20",
+  wowL7s:"2025-02-12", wowP7s:"2025-02-05", wowP7e:"2025-02-12", last14:"2025-02-05",
+};
+
+const _buildProductMetrics = () => {
+  const metrics = RAW_PRODUCTS.map(p => {
+    const rows   = ALL_SALES.filter(s => s.pid === p.id);
+    const rows90 = rows.filter(s => s.date >= DATES.last90);
+    const qty90  = rows90.reduce((a,s)=>a+s.qty,0);
+    const rev90  = qty90 * p.price;
+    const gp90   = qty90 * (p.price - p.vc);
+    const grossMar = p.price > 0 ? ((p.price - p.vc) / p.price)*100 : 0;
+    const l7 = rows.filter(s=>s.date>=DATES.wowL7s).reduce((a,s)=>a+s.qty,0);
+    const p7 = rows.filter(s=>s.date>=DATES.wowP7s&&s.date<DATES.wowP7e).reduce((a,s)=>a+s.qty,0);
+    const wow = p7>0?((l7-p7)/p7)*100:0;
+    const last14rows = rows.filter(s=>s.date>=DATES.last14);
+    const avgDay = last14rows.length>0 ? last14rows.reduce((a,s)=>a+s.qty,0)/14 : 0;
+    const stdDays = last14rows.length>0
+      ? Math.sqrt(last14rows.reduce((a,s)=>a+Math.pow(s.qty-avgDay,2),0)/14) : 0;
+    return { ...p, qty90, rev90, gp90, grossMar, wow, avgDailyQty:avgDay, stdDev:stdDays, l7, p7 };
+  });
+  const totalRev90 = metrics.reduce((a,p)=>a+p.rev90,0);
+  return metrics.map(p=>({...p, revShare:totalRev90>0?p.rev90/totalRev90:0, totalRev90}));
+};
+const PRODUCT_METRICS = _buildProductMetrics();
+
+const DAILY_AGG = (() => {
+  const m = {};
+  ALL_SALES.forEach(({date,qty,pid})=>{
+    const p=RAW_PRODUCTS.find(x=>x.id===pid); if(!p)return;
+    if(!m[date]) m[date]={date,revenue:0,grossProfit:0,orders:0};
+    m[date].revenue+=qty*p.price; m[date].grossProfit+=qty*(p.price-p.vc); m[date].orders+=qty;
+  });
+  return Object.values(m).sort((a,b)=>a.date.localeCompare(b.date));
+})();
+
+// Custos fixos: pizzaria de bairro SP com delivery (~80m² + motoboys)
+const COSTS_DEFAULT = {
+  aluguel:   5800,  // ponto comercial bairro SP
+  energia:   2200,  // forno a lenha + câmaras frias
+  agua:      480,
+  gas:       1600,  // forno a gás / lenha
+  folha:     12500, // pizzaiolos (2) + atendentes + caixa + motoboys (2) + retirada sócio
+  taxas:     1900,  // Simples Nacional + taxas municipais
+  marketing: 800,   // redes sociais + ifood
+  outros:    1200,  // embalagens + uniformes + manutenção
+};
+const COST_LABELS = {
+  aluguel:"Aluguel", energia:"Energia Elétrica", agua:"Água", gas:"Gás / Lenha",
+  folha:"Folha de Pagamento", taxas:"Taxas & Impostos", marketing:"Marketing / iFood", outros:"Outros",
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SERVICES LAYER
+═══════════════════════════════════════════════════════════════════════ */
+
+const calcDailyAgg = (overrides={}) => {
+  if(!overrides||Object.keys(overrides).length===0) return DAILY_AGG;
+  const m={};
+  ALL_SALES.forEach(({date,qty,pid})=>{
+    const raw=RAW_PRODUCTS.find(x=>x.id===pid); if(!raw)return;
+    const ov=overrides[pid]||{};
+    const price=(typeof ov.price==="number"&&ov.price>0)?ov.price:raw.price;
+    const vc=(typeof ov.vc==="number"&&ov.vc>=0)?ov.vc:raw.vc;
+    if(!m[date])m[date]={date,revenue:0,grossProfit:0,orders:0};
+    m[date].revenue+=qty*price; m[date].grossProfit+=qty*(price-vc); m[date].orders+=qty;
+  });
+  return Object.values(m).sort((a,b)=>a.date.localeCompare(b.date));
+};
+
+const calcProductMetrics = (overrides={}) => {
+  const hasNonCustom = overrides&&Object.values(overrides).some(o=>!o?._custom);
+  const hasCustom    = overrides&&Object.values(overrides).some(o=>o?._custom);
+  let metrics=[];
+  if(!hasNonCustom&&!hasCustom){ metrics=[...PRODUCT_METRICS]; }
+  else {
+    metrics=RAW_PRODUCTS.map(p=>{
+      const ov=overrides[p.id]||{};
+      if(ov._custom||ov._removed) return null;
+      const price=(typeof ov.price==="number"&&ov.price>0)?ov.price:p.price;
+      const vc=(typeof ov.vc==="number"&&ov.vc>=0)?ov.vc:p.vc;
+      const cat=(typeof ov.cat==="string"&&ov.cat)?ov.cat:p.cat;
+      const role=(typeof ov.role==="string"&&ov.role)?ov.role:p.role;
+      const rows=ALL_SALES.filter(s=>s.pid===p.id);
+      const qty90=rows.reduce((a,s)=>a+s.qty,0);
+      const rev90=qty90*price; const gp90=qty90*(price-vc);
+      const grossMar=price>0?((price-vc)/price)*100:0;
+      const base=PRODUCT_METRICS.find(x=>x.id===p.id)||{};
+      return {...base,price,vc,cat,role,rev90,gp90,grossMar,qty90,_active:true};
+    }).filter(Boolean);
+  }
+  if(hasCustom){
+    Object.entries(overrides).forEach(([idStr,ov])=>{
+      if(!ov?._custom||ov._removed) return;
+      const id=parseInt(idStr);
+      const {name,cat,price,vc,role,rating=4.5,nRat=0}=ov;
+      const catProds=PRODUCT_METRICS.filter(p=>p.cat===cat);
+      const avgCatQty=catProds.length>0?catProds.reduce((a,p)=>a+p.qty90,0)/catProds.length*0.6:20;
+      const qty90=Math.round(avgCatQty);
+      const rev90=qty90*price; const gp90=qty90*(price-vc);
+      const grossMar=price>0?((price-vc)/price)*100:0;
+      metrics.push({id,name,cat,price,vc,role,rating,nRat,baseVol:Math.round(avgCatQty/90),qty90,rev90,gp90,grossMar,wow:0,avgDailyQty:qty90/90,stdDev:0,l7:0,p7:0,revShare:0,totalRev90:0,_custom:true});
+    });
+  }
+  const totalRev90=metrics.reduce((a,p)=>a+p.rev90,0);
+  return metrics.map(p=>({...p,revShare:totalRev90>0?p.rev90/totalRev90:0,totalRev90}));
+};
+
+const calcFinancials = (costs,overrides={}) => {
+  const totalFixed=Object.values(costs).reduce((a,b)=>a+b,0);
+  const dayAgg=calcDailyAgg(overrides);
+  const prodMets=calcProductMetrics(overrides);
+  const slice30=dayAgg.slice(-30);
+  const totalRev30=slice30.reduce((a,d)=>a+d.revenue,0);
+  const totalGP30=slice30.reduce((a,d)=>a+d.grossProfit,0);
+  const totalRev90=dayAgg.reduce((a,d)=>a+d.revenue,0);
+  const totalGP90=dayAgg.reduce((a,d)=>a+d.grossProfit,0);
+  const netProfit30=totalGP30-totalFixed;
+  const netMar30=totalRev30>0?(netProfit30/totalRev30)*100:0;
+  const grossMar30=totalRev30>0?(totalGP30/totalRev30)*100:0;
+  const breakeven=totalGP30>0?(totalFixed/totalGP30)*totalRev30:0;
+  const avgTicket=dayAgg.slice(-30).reduce((a,d)=>a+d.orders,0);
+  const avgTicketVal=avgTicket>0?totalRev30/avgTicket:0;
+  const products=prodMets.map(p=>{
+    const fixedAlloc90=totalFixed*3*p.revShare;
+    const fixedPerUnit=p.qty90>0?fixedAlloc90/p.qty90:0;
+    const totalCostUnit=p.vc+fixedPerUnit;
+    const netMarUnit=p.price-totalCostUnit;
+    const netMar=p.price>0?(netMarUnit/p.price)*100:0;
+    return {...p,fixedPerUnit,totalCostUnit,netMar,netProfit90:p.qty90*netMarUnit};
+  });
+  const avgNetMar=products.reduce((a,p)=>a+p.netMar,0)/products.length;
+  const avgGrossMar=products.reduce((a,p)=>a+p.grossMar,0)/products.length;
+  const avgVol=products.reduce((a,p)=>a+p.qty90,0)/products.length;
+  return {totalFixed,totalRev30,totalGP30,totalRev90,totalGP90,netProfit30,netMar30,grossMar30,breakeven,avgTicketVal,products,avgNetMar,avgGrossMar,avgVol,dayAgg};
+};
+
+const calcHealthScore=(p,avgNetMar,avgVol)=>{
+  const marScore=Math.min(40,Math.max(0,(p.netMar/35)*40));
+  const volScore=Math.min(25,Math.max(0,(p.qty90/(avgVol*1.5))*25));
+  const trendScore=Math.min(15,Math.max(0,7.5+p.wow*0.25));
+  const ratingScore=Math.min(12,Math.max(0,(p.rating-3)/2*12));
+  const consistScore=p.stdDev<p.avgDailyQty*0.3?8:p.stdDev<p.avgDailyQty*0.6?4:0;
+  return Math.round(marScore+volScore+trendScore+ratingScore+consistScore);
+};
+
+const getQuadrant=(netMar,qty,avgNM,avgVol)=>{
+  if(netMar>=avgNM&&qty>=avgVol) return {label:"Estrela",color:"#C8A84A"};
+  if(netMar>=avgNM&&qty<avgVol)  return {label:"Oportunidade",color:"#4A8B5E"};
+  if(netMar<avgNM&&qty>=avgVol)  return {label:"Popular",color:"#C07838"};
+  return {label:"Problema",color:"#B03C3C"};
+};
+
+const detectAnomalies=(products)=>products
+  .filter(p=>Math.abs(p.wow)>20||p.stdDev>p.avgDailyQty*0.7)
+  .map(p=>({pid:p.id,name:p.name,wow:p.wow,stdDev:p.stdDev,
+    type:p.wow<-20?"queda":p.wow>25?"crescimento":"volatilidade"}));
+
+const calcConcentration=(products)=>{
+  const sorted=[...products].sort((a,b)=>b.rev90-a.rev90);
+  const top3Rev=sorted.slice(0,3).reduce((a,p)=>a+p.rev90,0);
+  const totalRev=sorted.reduce((a,p)=>a+p.rev90,0);
+  return{top3Pct:totalRev>0?(top3Rev/totalRev)*100:0,top3:sorted.slice(0,3)};
+};
+
+const calcPositioning=(fin)=>{
+  const avgPrice=PRODUCT_METRICS.reduce((a,p)=>a+p.price*p.revShare,0);
+  const premiumPct=fin.products.filter(p=>p.price>=80).reduce((a,p)=>a+p.revShare,0)*100;
+  const type=premiumPct>50?"Premium":premiumPct>20?"Equilíbrio":"Volume";
+  const coherent=(type==="Premium"&&fin.grossMar30>60)||(type==="Volume"&&fin.totalRev30/30>3000)||(type==="Equilíbrio");
+  return{avgPrice,premiumPct,type,coherent};
+};
+
+const ELAST_BY_CAT={
+  "Bebidas":-0.38,
+  "Bordas Recheadas":-0.30,
+  "Sobremesas":-0.52,
+  "Pizzas Tradicionais":-0.80,
+  "Pizzas Especiais":-0.65,
+};
+const ELAST_DEFAULT=-0.72;
+const ELAST_ROLE_MULT={"Premium":0.58,"Diferencial":0.65,"Carro-chefe":0.78,"Volume":1.28,"Complemento":1.10,"Sazonal":1.05,"Entrada":0.90};
+const DEAD_ZONE_BY_CAT={"Bebidas":0.065,"Bordas Recheadas":0.080,"Sobremesas":0.060,"Pizzas Tradicionais":0.048,"Pizzas Especiais":0.052};
+const SCENARIO_MULT={pessimista:1.40,base:1.00,otimista:0.65};
+
+const _calcVolImpact=(product,newPrice,elastBase,deadZone,scenarioMult)=>{
+  if(!product||newPrice<=0||product.price<=0) return product?.qty90||0;
+  const pctChange=(newPrice-product.price)/product.price;
+  if(Math.abs(pctChange)<=deadZone) return product.qty90;
+  const sign=pctChange>0?1:-1;
+  const excessChange=sign*(Math.abs(pctChange)-deadZone);
+  const elastEff=elastBase*scenarioMult;
+  let volMultiplier;
+  if(pctChange>0){const k=4.5;const d=Math.tanh(Math.abs(excessChange)*k)*Math.abs(excessChange);volMultiplier=1+elastEff*d;}
+  else{const k=3.5;const d=Math.tanh(Math.abs(excessChange)*k)*Math.abs(excessChange);volMultiplier=1-elastEff*d;volMultiplier=Math.min(volMultiplier,1.40);}
+  return Math.max(0,Math.round(product.qty90*volMultiplier));
+};
+
+const simulatePrice=(product,newPrice,fin)=>{
+  if(!product||newPrice<=0) return null;
+  const elastBase=(ELAST_BY_CAT[product.cat]??ELAST_DEFAULT);
+  const roleMult=(ELAST_ROLE_MULT[product.role]??1.0);
+  const elastFinal=elastBase*roleMult;
+  const deadZone=(DEAD_ZONE_BY_CAT[product.cat]??0.055);
+  const pctChange=(newPrice-product.price)/product.price;
+  const inDeadZone=Math.abs(pctChange)<=deadZone;
+  const newGrossMar=newPrice>0?((newPrice-product.vc)/newPrice)*100:0;
+  const newNetMar=newPrice>0?((newPrice-product.vc-(product.fixedPerUnit||0))/newPrice)*100:0;
+  const oldRev=product.qty90*product.price;
+  const scenarios={};
+  ["pessimista","base","otimista"].forEach(scen=>{
+    const vol=_calcVolImpact(product,newPrice,elastFinal,deadZone,SCENARIO_MULT[scen]);
+    const rev=vol*newPrice;
+    const delta=rev-oldRev;
+    const newGP=vol*(newPrice-product.vc);
+    const oldGP=product.qty90*(product.price-product.vc);
+    scenarios[scen]={volImpact:vol,newRev:rev,revDelta:delta,newGP,gpDelta:newGP-oldGP};
+  });
+  return{newPrice,newGrossMar,newNetMar,pctChange,inDeadZone,deadZone,elastBase:elastFinal,oldRev,oldGP:product.qty90*(product.price-product.vc),volImpact:scenarios.base.volImpact,revDelta:scenarios.base.revDelta,newRev:scenarios.base.newRev,scenarios};
+};
+
+const simulateNewProduct=(name,cat,price,vc,role,fin)=>{
+  if(!name||price<=vc||price<=0) return null;
+  const grossMar=((price-vc)/price)*100;
+  const catProds=fin.products.filter(p=>p.cat===cat).length;
+  const catRevShare=fin.products.filter(p=>p.cat===cat).reduce((a,p)=>a+p.revShare,0);
+  const estRevShare=catRevShare*0.15;
+  const estQtyWeek=Math.round(DAILY_AGG.slice(-7).reduce((a,d)=>a+d.revenue,0)/7*estRevShare/price*7);
+  const estNetMar=grossMar-(fin.totalFixed/fin.totalRev30||0)*100*0.8;
+  const satPenalty=catProds>=6?-14:catProds>=5?-8:0;
+  const rolePts={"Carro-chefe":10,"Premium":8,"Volume":5,"Diferencial":12,"Complemento":4,"Entrada":3}[role]||4;
+  const marPts=Math.min(35,(grossMar/80)*35);
+  const score=Math.max(10,Math.min(99,Math.round(48+marPts+rolePts+satPenalty)));
+  const canibal=catRevShare>0.40?"Alta":catRevShare>0.25?"Média":"Baixa";
+  return{grossMar,estNetMar,estQtyWeek,score,canibal,catProds,rec:score>=68};
+};
+
+const calcWeekPriorities=(fin)=>{
+  const priorities=[];
+  const neg=fin.products.filter(p=>p.netMar<0);
+  if(neg.length>0) priorities.push({icon:"⚠",level:"critical",text:`${neg.map(p=>p.name).join(", ")} operam com margem líquida negativa. Ação imediata necessária.`});
+  const dropping=fin.products.filter(p=>p.wow<-25).slice(0,2);
+  dropping.forEach(p=>priorities.push({icon:"▼",level:"warning",text:`${p.name} caiu ${Math.abs(p.wow).toFixed(0)}% esta semana. Avaliar visibilidade no cardápio.`}));
+  const {top3Pct,top3}=calcConcentration(fin.products);
+  if(top3Pct>55) priorities.push({icon:"◎",level:"info",text:`${top3Pct.toFixed(0)}% da receita concentrada em ${top3.map(p=>p.name).join(", ")}. Diversificar estrategicamente.`});
+  const growing=fin.products.filter(p=>p.wow>20).slice(0,1);
+  growing.forEach(p=>priorities.push({icon:"▲",level:"success",text:`${p.name} cresceu ${p.wow.toFixed(0)}% na semana. Capitalizar: destaque no app e promoção relâmpago.`}));
+  if(fin.netMar30<8) priorities.push({icon:"⚠",level:"critical",text:`Margem líquida em ${fin.netMar30.toFixed(1)}% — abaixo do mínimo saudável de 8%. Revisar custos ou preços.`});
+  const pos=calcPositioning(fin);
+  if(!pos.coherent) priorities.push({icon:"◎",level:"warning",text:`Posicionamento ${pos.type} com margem ${fin.grossMar30.toFixed(1)}% — incoerência estratégica detectada.`});
+  return priorities.slice(0,6);
+};
+
+const buildMonthlyReport=(fin)=>{
+  const conc=calcConcentration(fin.products);
+  const pos=calcPositioning(fin);
+  const best=[...fin.products].sort((a,b)=>b.netProfit90-a.netProfit90)[0];
+  const worst=fin.products.filter(p=>p.netMar<0)[0]||[...fin.products].sort((a,b)=>a.netMar-b.netMar)[0];
+  return{fin,conc,pos,best,worst};
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PERSISTENCE
+═══════════════════════════════════════════════════════════════════════ */
+
+const STORAGE_KEY="SUBURBANOS_STATE_v1";
+const STORAGE_VER=1;
+const STRATEGIC_PARAMS_DEFAULT={minMargin:8,targetMargin:18,targetOpProfit:12000,targetTicket:35,maxCostPct:55,alertSensitivity:"normal"};
+
+const persistState=(state)=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify({_v:STORAGE_VER,_ts:Date.now(),...state}));}catch(_){}};
+const loadPersistedState=()=>{try{const r=localStorage.getItem(STORAGE_KEY);if(!r)return null;const p=JSON.parse(r);return p?._v===STORAGE_VER?p:null;}catch{return null;}};
+const clearPersistedState=()=>{try{localStorage.removeItem(STORAGE_KEY);}catch{}};
+
+const getInitialState=()=>{
+  const saved=loadPersistedState();
+  if(!saved)return{costs:COSTS_DEFAULT,costLog:[{date:"18/02/2025 09:00",costs:{...COSTS_DEFAULT},note:"Configuração inicial — Pizzaria Suburbanos",impact:null}],productOverrides:{},productHistory:{},strategicParams:{...STRATEGIC_PARAMS_DEFAULT}};
+  return{costs:saved.costs||COSTS_DEFAULT,costLog:saved.costLog||[],productOverrides:saved.productOverrides||{},productHistory:saved.productHistory||{},strategicParams:saved.strategicParams||{...STRATEGIC_PARAMS_DEFAULT}};
+};
+
+const AppCtx=createContext(null);
+const _now=()=>new Date().toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+const _today=()=>new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric"});
+
+function AppProvider({ children }) {
+  const [_init] = useState(() => getInitialState());
+  const [costs,setCosts]=useState(_init.costs);
+  const [costLog,setCostLog]=useState(_init.costLog);
+  const [costAlert,setCostAlert]=useState(null);
+  const [strategicParams,setStrategicParams]=useState(_init.strategicParams||STRATEGIC_PARAMS_DEFAULT);
+  const [productOverrides,setProductOverrides]=useState(_init.productOverrides);
+  const [productHistory,setProductHistory]=useState(_init.productHistory);
+  const [updateFeedback,setUpdateFeedback]=useState(null);
+  const fin=useMemo(()=>calcFinancials(costs,productOverrides),[costs,productOverrides]);
+  const persistTimerRef=useRef(null);
+  const strategicParamsRef=useRef(strategicParams);
+  useEffect(()=>{strategicParamsRef.current=strategicParams;},[strategicParams]);
+  const schedulePersist=useCallback((nc,nl,no,nh,nsp)=>{
+    if(persistTimerRef.current)clearTimeout(persistTimerRef.current);
+    persistTimerRef.current=setTimeout(()=>persistState({costs:nc,costLog:nl,productOverrides:no,productHistory:nh,strategicParams:nsp!==undefined?nsp:strategicParamsRef.current}),250);
+  },[]);
+  const updateCosts=useCallback((newCosts,note="Atualização manual")=>{
+    const prevFin=calcFinancials(costs,productOverrides);
+    const nextFin=calcFinancials(newCosts,productOverrides);
+    const impact={marDelta:nextFin.netMar30-prevFin.netMar30,profDelta:nextFin.netProfit30-prevFin.netProfit30,prevMar:prevFin.netMar30,nextMar:nextFin.netMar30,prevProf:prevFin.netProfit30,nextProf:nextFin.netProfit30};
+    const newLog=[{date:_now(),costs:{...newCosts},note,impact},...costLog];
+    setCosts(newCosts);setCostLog(newLog);
+    if(Math.abs(impact.marDelta)>=0.3)setCostAlert(impact);
+    schedulePersist(newCosts,newLog,productOverrides,productHistory);
+  },[costs,costLog,productOverrides,productHistory,schedulePersist]);
+  const clearCostAlert=useCallback(()=>setCostAlert(null),[]);
+  const updateProduct=useCallback((pid,changes,note="Edição manual")=>{
+    const rawP=RAW_PRODUCTS.find(p=>p.id===pid);
+    const prevOv=productOverrides[pid]||{};
+    const isCustom=!!prevOv._custom;
+    if(!rawP&&!isCustom)return;
+    const prevPrice=prevOv.price??rawP?.price??0;
+    const prevVc=prevOv.vc??rawP?.vc??0;
+    const prevCat=prevOv.cat??rawP?.cat??"";
+    const prevRole=prevOv.role??rawP?.role??"";
+    const newPrice=typeof changes.price==="number"?changes.price:prevPrice;
+    const newVc=typeof changes.vc==="number"?changes.vc:prevVc;
+    if(typeof changes.price==="number"&&newPrice<=0)return;
+    if(typeof changes.vc==="number"&&newVc<0)return;
+    const effectiveOv={...prevOv};
+    if(typeof changes.price==="number"&&changes.price!==prevPrice)effectiveOv.price=changes.price;
+    if(typeof changes.vc==="number"&&changes.vc!==prevVc)effectiveOv.vc=changes.vc;
+    if(typeof changes.cat==="string"&&changes.cat!==prevCat)effectiveOv.cat=changes.cat;
+    if(typeof changes.role==="string"&&changes.role!==prevRole)effectiveOv.role=changes.role;
+    if(changes._removed===true)effectiveOv._removed=true;
+    if(changes._removed===false)delete effectiveOv._removed;
+    if(changes._active===true)delete effectiveOv._removed;
+    if(!isCustom){
+      if(effectiveOv.price===rawP.price)delete effectiveOv.price;
+      if(effectiveOv.vc===rawP.vc)delete effectiveOv.vc;
+      if(effectiveOv.cat===rawP.cat)delete effectiveOv.cat;
+      if(effectiveOv.role===rawP.role)delete effectiveOv.role;
+    }
+    setProductOverrides(prev=>{const next={...prev};if(!isCustom&&Object.keys(effectiveOv).length===0){delete next[pid];}else{next[pid]=effectiveOv;}return next;});
+    const histEntries=[];
+    const iso=new Date().toISOString();
+    if(typeof changes.price==="number"&&changes.price!==prevPrice)histEntries.push({date:_now(),field:"Preço",oldVal:prevPrice,newVal:changes.price,note,effectiveFrom:iso});
+    if(typeof changes.vc==="number"&&changes.vc!==prevVc)histEntries.push({date:_now(),field:"Custo Variável",oldVal:prevVc,newVal:changes.vc,note,effectiveFrom:iso});
+    if(typeof changes.cat==="string"&&changes.cat!==prevCat)histEntries.push({date:_now(),field:"Categoria",oldVal:prevCat,newVal:changes.cat,note,effectiveFrom:iso});
+    if(typeof changes.role==="string"&&changes.role!==prevRole)histEntries.push({date:_now(),field:"Papel",oldVal:prevRole,newVal:changes.role,note,effectiveFrom:iso});
+    if(changes._removed===true)histEntries.push({date:_now(),field:"Status",oldVal:"Ativo",newVal:"Inativo",note,effectiveFrom:iso});
+    if(changes._active===true)histEntries.push({date:_now(),field:"Status",oldVal:"Inativo",newVal:"Ativo",note,effectiveFrom:iso});
+    if(histEntries.length>0)setProductHistory(prev=>({...prev,[pid]:[...histEntries,...(prev[pid]||[])]}));
+    const prodName=isCustom?(prevOv.name||`Produto #${pid}`):rawP.name;
+    const fieldLabel=changes._removed===true?"inativado":changes._active===true?"reativado":changes.price!==undefined&&changes.vc!==undefined?"preço e custo":changes.price!==undefined?"preço":changes.vc!==undefined?"custo":changes.cat!==undefined?"categoria":changes.role!==undefined?"papel estratégico":"atualizado";
+    setUpdateFeedback({id:pid,msg:`${prodName} — ${fieldLabel} em ${_today()}`});
+    setTimeout(()=>setUpdateFeedback(null),3500);
+    const nextOv={...productOverrides};const nextHist={...productHistory};
+    if(!isCustom&&Object.keys(effectiveOv).length===0){delete nextOv[pid];}else{nextOv[pid]=effectiveOv;}
+    if(histEntries.length>0)nextHist[pid]=[...histEntries,...(nextHist[pid]||[])];
+    schedulePersist(costs,costLog,nextOv,nextHist);
+  },[productOverrides,productHistory,costs,costLog,schedulePersist]);
+  const bulkUpdateProducts=useCallback((updates,note="Edição em massa")=>{
+    if(!updates||updates.length===0)return;
+    setProductOverrides(prev=>{
+      const next={...prev};
+      updates.forEach(({pid,price,vc})=>{
+        const rawP=RAW_PRODUCTS.find(p=>p.id===pid);if(!rawP)return;
+        const prevOv=next[pid]||{};const effectiveOv={...prevOv};
+        if(typeof price==="number"&&price>0)effectiveOv.price=price;
+        if(typeof vc==="number"&&vc>=0)effectiveOv.vc=vc;
+        if(effectiveOv.price===rawP.price)delete effectiveOv.price;
+        if(effectiveOv.vc===rawP.vc)delete effectiveOv.vc;
+        if(Object.keys(effectiveOv).length===0){delete next[pid];}else{next[pid]=effectiveOv;}
+      });
+      return next;
+    });
+    setUpdateFeedback({id:null,msg:`${updates.length} produto(s) atualizado(s) em ${_today()}`});
+    setTimeout(()=>setUpdateFeedback(null),4000);
+  },[productOverrides,schedulePersist]);
+  const resetProduct=useCallback((pid,note="Restaurado ao original")=>{
+    const rawP=RAW_PRODUCTS.find(p=>p.id===pid);if(!rawP)return;
+    setProductOverrides(prev=>{const n={...prev};delete n[pid];return n;});
+    setProductHistory(prev=>({...prev,[pid]:[{date:_now(),field:"Reset",oldVal:null,newVal:null,note},...(prev[pid]||[])]}));
+    setUpdateFeedback({id:pid,msg:`${rawP.name} — restaurado aos valores originais`});
+    setTimeout(()=>setUpdateFeedback(null),3000);
+  },[]);
+  useEffect(()=>{schedulePersist(costs,costLog,productOverrides,productHistory);},[costs,costLog,productOverrides,productHistory,schedulePersist]);
+  const addProduct=useCallback((productData,note="Novo produto adicionado via Simulador")=>{
+    const{name,cat,price,vc,role}=productData;
+    if(!name||!name.trim()||!price||price<=0||vc===undefined||vc<0||!cat)return false;
+    const existsInRaw=RAW_PRODUCTS.some(p=>p.name.toLowerCase()===name.toLowerCase());
+    const existsInCustom=Object.values(productOverrides).some(o=>o._custom&&o.name?.toLowerCase()===name.toLowerCase());
+    if(existsInRaw||existsInCustom)return false;
+    const customCount=Object.values(productOverrides).filter(o=>o._custom).length;
+    const newId=100+customCount+1;
+    setProductOverrides(prev=>({...prev,[newId]:{_custom:true,name:name.trim(),cat,price,vc,role:role||"Diferencial",rating:4.5,nRat:0,addedAt:new Date().toISOString()}}));
+    setProductHistory(prev=>({...prev,[newId]:[{date:_now(),field:"Adicionado",oldVal:null,newVal:price,note,effectiveFrom:new Date().toISOString()}]}));
+    setUpdateFeedback({id:newId,msg:`${name.trim()} adicionado ao cardápio em ${_today()}`});
+    setTimeout(()=>setUpdateFeedback(null),4000);
+    return newId;
+  },[productOverrides]);
+  const updateStrategicParams=useCallback((newParams,note="Parâmetros estratégicos atualizados")=>{
+    setStrategicParams(prev=>{const merged={...prev,...newParams};schedulePersist(costs,costLog,productOverrides,productHistory,merged);return merged;});
+    setUpdateFeedback({id:null,msg:`Parâmetros estratégicos atualizados em ${_today()}`});
+    setTimeout(()=>setUpdateFeedback(null),3000);
+  },[costs,costLog,productOverrides,productHistory,schedulePersist]);
+  const updateCostsSilent=useCallback((newCosts,note="Atualização via Copiloto")=>{updateCosts(newCosts,note);},[updateCosts]);
+  const clearAll=useCallback(()=>{
+    clearPersistedState();
+    setCosts(COSTS_DEFAULT);
+    setCostLog([{date:_now(),costs:{...COSTS_DEFAULT},note:"Reset manual — Pizzaria Suburbanos",impact:null}]);
+    setCostAlert(null);setProductOverrides({});setProductHistory({});
+    setStrategicParams({...STRATEGIC_PARAMS_DEFAULT});
+    setUpdateFeedback({id:null,msg:"Sistema restaurado ao estado padrão."});
+    setTimeout(()=>setUpdateFeedback(null),4000);
+  },[]);
+  const ctx=useMemo(()=>({fin,costs,costLog,costAlert,productOverrides,productHistory,updateFeedback,strategicParams,updateStrategicParams,updateCosts,updateCostsSilent,clearCostAlert,updateProduct,bulkUpdateProducts,resetProduct,clearAll,addProduct}),[fin,costs,costLog,costAlert,productOverrides,productHistory,updateFeedback,strategicParams,updateStrategicParams,updateCosts,updateCostsSilent,clearCostAlert,updateProduct,bulkUpdateProducts,resetProduct,clearAll,addProduct]);
+  return <AppCtx.Provider value={ctx}>{children}</AppCtx.Provider>;
+}
+const useApp=()=>useContext(AppCtx);
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — paleta quente, remetendo a pizzaria artesanal
+═══════════════════════════════════════════════════════════════════════ */
+
+const T={
+  bg:"#0C0A09",panel:"#151210",dark:"#100E0C",edge:"#2A2420",
+  sand:"#F0D8B0",sandLight:"#FAF0DC",sandMid:"#D8C498",muted:"#8A7A6A",subtle:"#6A5E52",
+  accent:"#E07820",  // laranja-tijolo (cor da pizzaria)
+  green:"#58B868",orange:"#D08040",red:"#D45050",blue:"#5090C8",
+  black:"#0C0A09",border:"1px solid #2A2420",
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI ATOMS
+═══════════════════════════════════════════════════════════════════════ */
+
+const _num=n=>(typeof n==="number"&&isFinite(n)?n:0);
+const $=n=>_num(n).toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0});
+const $2=n=>_num(n).toLocaleString("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:2,maximumFractionDigits:2});
+const pct=n=>`${_num(n).toFixed(1)}%`;
+
+const Tag=memo(({children,color,xs})=>(
+  <span style={{fontSize:xs?9:10,fontWeight:700,letterSpacing:"0.07em",padding:xs?"2px 8px":"3px 10px",borderRadius:999,background:color+"18",color,border:`1px solid ${color}55`}}>{children}</span>
+));
+
+const KPI=memo(({label,value,sub,color,prev})=>(
+  <div style={{background:T.dark,border:T.border,borderRadius:12,padding:"16px 18px",minWidth:0,overflow:"hidden"}}>
+    <div style={{fontSize:9,color:T.muted,letterSpacing:"0.16em",textTransform:"uppercase",marginBottom:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</div>
+    <div style={{fontSize:22,fontWeight:900,color:color||T.sand,lineHeight:1.05,fontFamily:"Georgia,serif",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",letterSpacing:"-0.02em"}}>{value}</div>
+    {prev&&<div style={{fontSize:10,color:T.subtle,marginTop:3,textDecoration:"line-through",fontVariantNumeric:"tabular-nums"}}>{prev}</div>}
+    {sub&&<div style={{fontSize:10,color:T.subtle,marginTop:4,whiteSpace:"nowrap"}}>{sub}</div>}
+  </div>
+));
+
+const Panel=memo(({children,style})=>(
+  <div style={{background:T.panel,border:`1px solid #2E2820`,borderRadius:14,padding:"20px 22px",...style}}>{children}</div>
+));
+
+const PL=({children})=>(
+  <div style={{fontSize:9,color:T.sandMid,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:13,fontWeight:700}}>{children}</div>
+);
+
+const SH=({eyebrow,title})=>(
+  <div style={{marginBottom:24}}>
+    <div style={{fontSize:9,color:T.muted,letterSpacing:"0.20em",textTransform:"uppercase",marginBottom:8,fontWeight:600}}>{eyebrow}</div>
+    <h1 style={{margin:0,fontSize:26,fontWeight:900,color:T.sandLight,letterSpacing:"-0.03em",fontFamily:"Georgia,serif"}}>{title}</h1>
+  </div>
+);
+
+const ChartTip=({active,payload,label})=>{
+  if(!active||!payload?.length)return null;
+  return(
+    <div style={{background:"#121008",border:"1px solid #222",borderRadius:8,padding:"9px 13px",fontSize:11}}>
+      {label&&<div style={{color:T.muted,fontSize:9,marginBottom:4}}>{label}</div>}
+      {payload.map((p,i)=><div key={i} style={{color:T.muted,marginBottom:1}}>{p.name}: <b style={{color:T.sand}}>{typeof p.value==="number"&&Math.abs(p.value)>100?$(p.value):typeof p.value==="number"?p.value.toFixed(1):p.value}</b></div>)}
+    </div>
+  );
+};
+
+const Divider=()=><div style={{height:1,background:T.edge,margin:"16px 0"}}/>;
+
+const Collapse=({title,children,open:defaultOpen=false})=>{
+  const[open,setOpen]=useState(defaultOpen);
+  return(
+    <div style={{marginTop:6}}>
+      <button onClick={()=>setOpen(o=>!o)} style={{display:"flex",gap:6,alignItems:"center",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit"}}>
+        <span style={{fontSize:9,color:T.muted}}>{open?"▾":"▸"}</span>
+        <span style={{fontSize:10,color:T.muted,letterSpacing:"0.09em",fontWeight:600}}>{title}</span>
+      </button>
+      {open&&<div style={{marginTop:8,paddingLeft:13,borderLeft:`1px solid ${T.edge}`}}>{children}</div>}
+    </div>
+  );
+};
+
+const CostToast=memo(()=>{
+  const{costAlert,clearCostAlert}=useApp();
+  if(!costAlert)return null;
+  const up=costAlert.marDelta>0;
+  return(
+    <div style={{position:"fixed",top:20,right:20,zIndex:1000,background:T.panel,border:`1px solid ${up?T.green:T.red}44`,borderLeft:`3px solid ${up?T.green:T.red}`,borderRadius:12,padding:"14px 18px",maxWidth:320,boxShadow:"0 8px 32px rgba(0,0,0,0.7)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+        <span style={{fontSize:9,fontWeight:700,color:up?T.green:T.red,letterSpacing:"0.12em"}}>{up?"▲ IMPACTO POSITIVO":"▼ IMPACTO NOS CUSTOS"}</span>
+        <button onClick={clearCostAlert} style={{background:"none",border:"none",color:T.muted,cursor:"pointer",fontSize:14,padding:0,lineHeight:1}}>×</button>
+      </div>
+      <div style={{fontSize:12,color:"#aaa",lineHeight:1.7}}>
+        Margem líquida: <b style={{color:T.sand,fontVariantNumeric:"tabular-nums"}}>{pct(costAlert.prevMar)}</b> → <b style={{color:up?T.green:T.red,fontVariantNumeric:"tabular-nums"}}>{pct(costAlert.nextMar)}</b>.{" "}
+        Impacto mensal: <b style={{color:up?T.green:T.red,fontVariantNumeric:"tabular-nums"}}>{costAlert.profDelta>0?"+":""}${$(Math.abs(_num(costAlert.profDelta)))}</b>.
+      </div>
+    </div>
+  );
+});
+
+const UpdateToast=memo(()=>{
+  const{updateFeedback}=useApp();
+  if(!updateFeedback)return null;
+  return(
+    <div style={{position:"fixed",bottom:24,right:20,zIndex:1001,background:T.panel,border:`1px solid ${T.green}44`,borderLeft:`3px solid ${T.green}`,borderRadius:12,padding:"12px 18px",maxWidth:340,boxShadow:"0 8px 32px rgba(0,0,0,0.7)",animation:"fadeSlideUp 0.25s ease"}}>
+      <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <div style={{display:"flex",alignItems:"center",gap:9}}>
+        <span style={{color:T.green,fontSize:14}}>✓</span>
+        <div>
+          <div style={{fontSize:9,color:T.green,fontWeight:800,letterSpacing:"0.12em",marginBottom:2}}>ATUALIZADO</div>
+          <div style={{fontSize:11,color:"#AEA498"}}>{updateFeedback.msg}</div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const InlineEditor=memo(({value,onSave,type="price",small=false})=>{
+  const[editing,setEditing]=useState(false);
+  const[draft,setDraft]=useState("");
+  const inputRef=useRef(null);
+  const open=()=>{setDraft(String(value));setEditing(true);};
+  const cancel=()=>setEditing(false);
+  const save=()=>{const v=parseFloat(draft);if(!isNaN(v)&&v>=0){onSave(v);}setEditing(false);};
+  const keyDown=e=>{if(e.key==="Enter"){e.preventDefault();save();}if(e.key==="Escape"){e.preventDefault();cancel();}};
+  useEffect(()=>{if(editing)inputRef.current?.focus();},[editing]);
+  if(editing)return(
+    <div style={{display:"inline-flex",alignItems:"center",gap:4}}>
+      <span style={{fontSize:small?9:10,color:T.muted}}>R$</span>
+      <input ref={inputRef} type="number" value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={keyDown} onBlur={save}
+        style={{width:small?52:64,background:"#0e0c0a",border:`1px solid ${T.accent}88`,borderRadius:5,padding:small?"2px 5px":"3px 7px",fontSize:small?11:12,color:T.sand,outline:"none",fontFamily:"inherit",fontVariantNumeric:"tabular-nums"}}/>
+      <button onClick={save}   style={{background:"none",border:"none",cursor:"pointer",color:T.green, fontSize:12,padding:0,lineHeight:1}}>✓</button>
+      <button onClick={cancel} style={{background:"none",border:"none",cursor:"pointer",color:T.muted, fontSize:12,padding:0,lineHeight:1}}>✕</button>
+    </div>
+  );
+  return(
+    <button onClick={open} title={`Clique para editar ${type==="price"?"preço":"custo variável"}`}
+      style={{background:"none",border:"none",cursor:"pointer",padding:"2px 4px",borderRadius:4,fontFamily:"inherit",color:T.sand,fontSize:small?11:12,fontWeight:600,fontVariantNumeric:"tabular-nums",borderBottom:`1px dashed ${T.muted}44`,transition:"border-color 0.15s"}}
+      onMouseEnter={e=>e.currentTarget.style.borderBottomColor=T.accent+"aa"}
+      onMouseLeave={e=>e.currentTarget.style.borderBottomColor=T.muted+"44"}>
+      R$ {_num(value).toFixed(2).replace(".",",")}
+    </button>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DASHBOARD
+═══════════════════════════════════════════════════════════════════════ */
+
+const Dashboard=memo(({period,setPeriod})=>{
+  const{fin}=useApp();
+  const[sliderDays,setSliderDays]=useState(parseInt(period)||90);
+  const days=sliderDays;
+  useEffect(()=>{const ext=parseInt(period);if(ext&&ext!==sliderDays)setSliderDays(ext);},[period]);
+  const slice=useMemo(()=>(fin.dayAgg||DAILY_AGG).slice(-days),[days,fin.dayAgg]);
+  const rev=useMemo(()=>slice.reduce((a,d)=>a+d.revenue,0),[slice]);
+  const gp=useMemo(()=>slice.reduce((a,d)=>a+d.grossProfit,0),[slice]);
+  const qty=useMemo(()=>slice.reduce((a,d)=>a+d.orders,0),[slice]);
+  const gm=rev>0?(gp/rev*100):0;
+  const priorities=useMemo(()=>calcWeekPriorities(fin),[fin]);
+  const priColors={critical:T.red,warning:T.orange,success:T.green,info:T.blue};
+  const catData=useMemo(()=>{
+    const periodMult=days/90;const cats={};
+    fin.products.forEach(p=>{if(!cats[p.cat])cats[p.cat]={cat:p.cat,rev:0,gp:0};cats[p.cat].rev+=p.rev90*periodMult;cats[p.cat].gp+=p.gp90*periodMult;});
+    return Object.values(cats);
+  },[fin,days]);
+  const periodLabel=days>=365?"12 meses":days>=30?`${days} dias`:days===7?"7 dias":`${days} dias`;
+  const PRESETS=[{d:7,l:"7d"},{d:30,l:"30d"},{d:90,l:"90d"},{d:180,l:"6m"},{d:365,l:"12m"}];
+  return(
+    <>
+      <SH eyebrow="Pizzaria Suburbanos · São Paulo · 12 meses de histórico" title="Dashboard Estratégico"/>
+      <div style={{marginBottom:22,background:T.panel,border:`1px solid #2E2820`,borderRadius:12,padding:"16px 20px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+            <span style={{fontSize:22,fontWeight:900,color:T.sand,fontFamily:"Georgia,serif",letterSpacing:"-0.02em",fontVariantNumeric:"tabular-nums"}}>{periodLabel}</span>
+            <span style={{fontSize:9,color:T.muted,letterSpacing:"0.14em"}}>SELECIONADO</span>
+          </div>
+          <div style={{display:"flex",gap:5}}>
+            {PRESETS.map(({d,l})=>(
+              <button key={d} onClick={()=>{setSliderDays(d);setPeriod(String(d));}}
+                style={{padding:"3px 10px",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.1s",background:days===d?T.accent+"22":"transparent",color:days===d?T.accent:T.muted,border:`1px solid ${days===d?T.accent+"55":T.edge}`}}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{position:"relative"}}>
+          <style>{`.flav-slider{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;outline:none;background:linear-gradient(to right,${T.accent} 0%,${T.accent} ${((days-7)/(365-7))*100}%,#2A2420 ${((days-7)/(365-7))*100}%,#2A2420 100%);cursor:pointer;}.flav-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:${T.sand};border:2px solid ${T.bg};box-shadow:0 0 0 2px ${T.accent}66;cursor:pointer;}.flav-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:${T.sand};border:2px solid ${T.bg};box-shadow:0 0 0 2px ${T.accent}66;cursor:pointer;}`}</style>
+          <input type="range" className="flav-slider" min={7} max={365} step={1} value={days} onChange={e=>{const v=parseInt(e.target.value);setSliderDays(v);setPeriod(String(v));}} style={{width:"100%",height:4}}/>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+            {["7d","30d","90d","180d","365d"].map(l=><span key={l} style={{fontSize:8,color:T.subtle,letterSpacing:"0.06em"}}>{l}</span>)}
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:14}}>
+          {[{l:"Faturamento",v:$(rev),c:T.sand},{l:"Lucro Bruto",v:$(gp),c:T.green},{l:"Margem Bruta",v:pct(gm),c:gm>55?T.green:gm>40?T.accent:T.red},{l:"Volume (itens)",v:qty.toLocaleString("pt-BR"),c:T.sandMid}].map(({l,v,c})=>(
+            <div key={l} style={{background:T.dark,borderRadius:8,padding:"10px 12px"}}>
+              <div style={{fontSize:8,color:T.muted,letterSpacing:"0.14em",marginBottom:5}}>{l}</div>
+              <div style={{fontSize:16,fontWeight:900,color:c,fontFamily:"Georgia,serif",fontVariantNumeric:"tabular-nums"}}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+        <KPI label="Lucro Líquido (30d)" value={$(fin.netProfit30)} color={fin.netProfit30>0?T.green:T.red}/>
+        <KPI label="Margem Líquida (30d)" value={pct(fin.netMar30)} color={fin.netMar30>12?T.green:fin.netMar30>5?T.accent:T.red}/>
+        <KPI label="Ticket Médio/item" value={$2(fin.avgTicketVal)} sub="30 dias"/>
+        <KPI label="Ponto Equilíbrio" value={$(fin.breakeven)} sub="/mês"/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:12,marginBottom:12}}>
+        <Panel>
+          <PL>Receita & Lucro Bruto · {periodLabel}</PL>
+          <ResponsiveContainer width="100%" height={210}>
+            <AreaChart data={slice}>
+              <defs>
+                <linearGradient id="gR" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={T.accent} stopOpacity={0.12}/><stop offset="95%" stopColor={T.accent} stopOpacity={0}/></linearGradient>
+                <linearGradient id="gG" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={T.green} stopOpacity={0.1}/><stop offset="95%" stopColor={T.green} stopOpacity={0}/></linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1E1A16"/>
+              <XAxis dataKey="date" tick={{fill:T.muted,fontSize:9}} tickFormatter={v=>v?v.slice(5).replace("-","/"):""} interval={Math.max(0,Math.ceil(slice.length/6)-1)}/>
+              <YAxis tick={{fill:T.muted,fontSize:9}} tickFormatter={v=>`${(v/1000).toFixed(0)}k`}/>
+              <Tooltip content={<ChartTip/>}/>
+              <Area type="monotone" dataKey="revenue" name="Receita" stroke={T.accent} strokeWidth={1.5} fill="url(#gR)" dot={false}/>
+              <Area type="monotone" dataKey="grossProfit" name="L.Bruto" stroke={T.green} strokeWidth={1.5} fill="url(#gG)" dot={false}/>
+            </AreaChart>
+          </ResponsiveContainer>
+        </Panel>
+        <Panel>
+          <PL>Receita por Categoria</PL>
+          <ResponsiveContainer width="100%" height={210}>
+            <BarChart data={catData} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" stroke="#1E1A16"/>
+              <XAxis type="number" tick={{fill:T.muted,fontSize:8}} tickFormatter={v=>`${(v/1000).toFixed(0)}k`}/>
+              <YAxis type="category" dataKey="cat" tick={{fill:T.muted,fontSize:8}} width={90}/>
+              <Tooltip content={<ChartTip/>}/>
+              <Bar dataKey="rev" name="Receita" fill={T.accent} fillOpacity={0.65} radius={[0,3,3,0]}/>
+            </BarChart>
+          </ResponsiveContainer>
+        </Panel>
+      </div>
+      <Panel>
+        <PL>Prioridades da Semana</PL>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
+          {priorities.length===0&&<div style={{fontSize:12,color:T.muted}}>Sem prioridades críticas esta semana.</div>}
+          {priorities.map((p,i)=>(
+            <div key={i} style={{display:"flex",gap:10,padding:"11px 14px",borderRadius:9,background:T.dark,border:`1px solid ${priColors[p.level]}22`}}>
+              <span style={{color:priColors[p.level],fontSize:14,flexShrink:0}}>{p.icon}</span>
+              <span style={{fontSize:11,color:T.sandMid,lineHeight:1.6,fontWeight:500}}>{p.text}</span>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ALERTS
+═══════════════════════════════════════════════════════════════════════ */
+
+const Alerts=memo(()=>{
+  const{fin}=useApp();
+  const colors={critical:T.red,warning:T.orange,success:T.green,info:T.blue};
+  const labels={critical:"CRÍTICO",warning:"ATENÇÃO",success:"POSITIVO",info:"INSIGHT"};
+  const alerts=useMemo(()=>{
+    const list=[];
+    fin.products.filter(p=>p.netMar<0).forEach(p=>
+      list.push({type:"critical",product:p.name,cat:p.cat,date:"Agora",
+        msg:`Margem líquida negativa (${pct(p.netMar)}) considerando rateio de custos fixos. Preço atual R$${p.price} não cobre custo total estimado de ${$2(p.totalCostUnit)}.`})
+    );
+    detectAnomalies(fin.products).filter(a=>a.type==="queda").forEach(a=>{
+      const p=fin.products.find(x=>x.id===a.pid);
+      list.push({type:"warning",product:a.name,cat:p?.cat||"",date:"Últ. 7 dias",
+        msg:`Queda de ${Math.abs(a.wow).toFixed(0)}% no volume semana a semana. Avaliar visibilidade no app e cardápio impresso.`});
+    });
+    if(fin.netMar30<8)
+      list.push({type:"critical",product:"Margem Geral",cat:"Financeiro",date:"Agora",
+        msg:`Margem líquida em ${pct(fin.netMar30)} — abaixo do mínimo recomendado de 8%. Revisar estrutura de custos ou precificação.`});
+    detectAnomalies(fin.products).filter(a=>a.type==="crescimento").forEach(a=>{
+      const p=fin.products.find(x=>x.id===a.pid);
+      list.push({type:"success",product:a.name,cat:p?.cat||"",date:"Últ. 7 dias",
+        msg:`Crescimento de ${a.wow.toFixed(0)}% no volume esta semana. Capitalizar com destaque no iFood e stories de Instagram.`});
+    });
+    const conc=calcConcentration(fin.products);
+    if(conc.top3Pct>55)
+      list.push({type:"info",product:"Concentração de Receita",cat:"Estratégico",date:"90 dias",
+        msg:`${conc.top3Pct.toFixed(0)}% da receita em 3 produtos: ${conc.top3.map(p=>p.name).join(", ")}. Diversificação recomendada.`});
+    fin.products.filter(p=>p.grossMar>65&&p.qty90<fin.avgVol*0.5).forEach(p=>
+      list.push({type:"info",product:p.name,cat:p.cat,date:"90 dias",
+        msg:`Margem bruta de ${pct(p.grossMar)} com volume baixo (${p.qty90} un em 90d). Produto subaproveitado — avaliar destaque no cardápio ou ação de promoção.`})
+    );
+    // Alertas específicos de pizzaria
+    // Bordas: avaliação ruim mas alto giro
+    const bordasBaixa=fin.products.filter(p=>p.cat==="Bordas Recheadas"&&p.rating<4.3).slice(0,1);
+    bordasBaixa.forEach(p=>list.push({type:"warning",product:p.name,cat:"Bordas Recheadas",date:"Avaliações",
+      msg:`Borda recheada com avaliação ${p.rating}★ — abaixo do esperado. A borda é um diferencial rentável (margem alta); avaliação baixa pode reduzir pedidos de recheio extra. Revisar insumo ou preparo.`}));
+    // Pizza especial com baixo giro
+    const espBaixo=fin.products.filter(p=>p.cat==="Pizzas Especiais"&&p.qty90<fin.avgVol*0.4).slice(0,1);
+    espBaixo.forEach(p=>list.push({type:"info",product:p.name,cat:"Pizzas Especiais",date:"90 dias",
+      msg:`Pizza especial (R$${p.price}) com ${p.qty90} unidades em 90 dias — abaixo de 40% da média. Avaliar foto no iFood, descrição do cardápio ou ação de degustação.`}));
+    return list;
+  },[fin]);
+  return(
+    <>
+      <SH eyebrow="Monitoramento Automático" title="Avisos Inteligentes"/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:20}}>
+        {["critical","warning","success","info"].map(t=>(
+          <div key={t} style={{background:T.dark,border:`1px solid ${colors[t]}22`,borderRadius:10,padding:"12px 15px",display:"flex",gap:10,alignItems:"center"}}>
+            <div style={{fontSize:9,color:colors[t],fontWeight:700,letterSpacing:"0.14em",width:54}}>{labels[t]}</div>
+            <div style={{fontSize:22,fontWeight:800,color:T.sand}}>{alerts.filter(a=>a.type===t).length}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {alerts.map((a,i)=>(
+          <div key={i} style={{background:T.panel,borderLeft:`2.5px solid ${colors[a.type]}`,border:`1px solid ${colors[a.type]}18`,borderRadius:11,padding:"13px 17px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:6}}>
+                  <Tag color={colors[a.type]} xs>{labels[a.type]}</Tag>
+                  <span style={{fontSize:12,fontWeight:700,color:T.sandLight}}>{a.product}</span>
+                </div>
+                <div style={{fontSize:12,color:"#A8A090",lineHeight:1.6}}>{a.msg}</div>
+              </div>
+              <span style={{fontSize:9,color:T.subtle,marginLeft:14,whiteSpace:"nowrap",marginTop:2}}>{a.date}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MATRIZ ESTRATÉGICA
+═══════════════════════════════════════════════════════════════════════ */
+
+const MatrizEstrategica=memo(({enriched,fin})=>{
+  const[hovered,setHovered]=useState(null);
+  const[tipPos,setTipPos]=useState({x:0,y:0});
+  const svgRef=useRef(null);
+  const W=720,H=350;
+  const PAD={top:24,right:28,bottom:48,left:62};
+  const plotW=W-PAD.left-PAD.right,plotH=H-PAD.top-PAD.bottom;
+  const netMars=enriched.map(p=>p.netMar),vols=enriched.map(p=>p.qty90);
+  const nmMin=Math.min(...netMars),nmMax=Math.max(...netMars);
+  const vMin=Math.min(...vols),vMax=Math.max(...vols);
+  const nmPad=(nmMax-nmMin)*0.13||6,vPad=(vMax-vMin)*0.13||6;
+  const nmLo=nmMin-nmPad,nmHi=nmMax+nmPad,vLo=vMin-vPad,vHi=vMax+vPad;
+  const cx=nm=>PAD.left+((nm-nmLo)/(nmHi-nmLo))*plotW;
+  const cy=v=>PAD.top+(1-(v-vLo)/(vHi-vLo))*plotH;
+  const refX=cx(fin.avgNetMar),refY=cy(fin.avgVol);
+  const nmTicks=Array.from({length:6},(_,i)=>nmLo+(nmHi-nmLo)*i/5);
+  const vTicks=Array.from({length:5},(_,i)=>vLo+(vHi-vLo)*i/4);
+  const onEnter=(p,e)=>{const rect=svgRef.current?.getBoundingClientRect();if(!rect)return;const scaleX=W/rect.width,scaleY=H/rect.height;setHovered(p);setTipPos({x:(e.clientX-rect.left)*scaleX,y:(e.clientY-rect.top)*scaleY});};
+  const onMove=(e)=>{if(!hovered)return;const rect=svgRef.current?.getBoundingClientRect();if(!rect)return;const scaleX=W/rect.width,scaleY=H/rect.height;setTipPos({x:(e.clientX-rect.left)*scaleX,y:(e.clientY-rect.top)*scaleY});};
+  const onLeave=()=>setHovered(null);
+  const TW=200,TH=138;
+  const tipX=tipPos.x+14+TW>W?tipPos.x-TW-14:tipPos.x+14;
+  const tipY=tipPos.y-10+TH>H?tipPos.y-TH+10:tipPos.y-10;
+  const quadNames={Estrela:"Estrela ✦",Oportunidade:"Oportunidade",Popular:"Popular",Problema:"Problema"};
+  return(
+    <Panel style={{marginBottom:14}}>
+      <PL>Matriz Estratégica — Margem Líquida × Volume (90 dias)</PL>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+          {[["Estrela",T.accent,"Alta margem · Alto volume"],["Oportunidade",T.green,"Alta margem · Baixo volume"],["Popular",T.orange,"Baixa margem · Alto volume"],["Problema",T.red,"Baixa margem · Baixo volume"]].map(([l,c,d])=>(
+            <div key={l} style={{display:"flex",alignItems:"center",gap:6,fontSize:10}}>
+              <div style={{width:8,height:8,borderRadius:2,background:c,flexShrink:0}}/>
+              <span style={{color:T.sandLight,fontWeight:600}}>{l}</span>
+              <span style={{color:"#3a3630",fontSize:9}}>{d}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:9,color:"#383430"}}>Passe o mouse sobre um produto · {enriched.length} itens</div>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${H}`} style={{fontFamily:"inherit",display:"block",cursor:"crosshair"}} onMouseMove={onMove} onMouseLeave={onLeave}>
+          <rect x={PAD.left} y={PAD.top}  width={refX-PAD.left}    height={refY-PAD.top}      fill={T.green}  fillOpacity={0.025}/>
+          <rect x={refX}     y={PAD.top}  width={W-PAD.right-refX} height={refY-PAD.top}      fill={T.accent} fillOpacity={0.03}/>
+          <rect x={PAD.left} y={refY}     width={refX-PAD.left}    height={H-PAD.bottom-refY} fill={T.red}    fillOpacity={0.025}/>
+          <rect x={refX}     y={refY}     width={W-PAD.right-refX} height={H-PAD.bottom-refY} fill={T.orange} fillOpacity={0.025}/>
+          {nmTicks.map((v,i)=><line key={i} x1={cx(v)} y1={PAD.top} x2={cx(v)} y2={H-PAD.bottom} stroke="#1a1612" strokeWidth={1}/>)}
+          {vTicks.map((v,i)=><line key={i} x1={PAD.left} y1={cy(v)} x2={W-PAD.right} y2={cy(v)} stroke="#1a1612" strokeWidth={1}/>)}
+          <line x1={refX} y1={PAD.top} x2={refX} y2={H-PAD.bottom} stroke="#2e2820" strokeWidth={1.5} strokeDasharray="5 4"/>
+          <line x1={PAD.left} y1={refY} x2={W-PAD.right} y2={refY} stroke="#2e2820" strokeWidth={1.5} strokeDasharray="5 4"/>
+          <line x1={PAD.left} y1={H-PAD.bottom} x2={W-PAD.right} y2={H-PAD.bottom} stroke="#2a2420" strokeWidth={1}/>
+          <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={H-PAD.bottom} stroke="#2a2420" strokeWidth={1}/>
+          {nmTicks.map((v,i)=>(
+            <g key={i}>
+              <line x1={cx(v)} y1={H-PAD.bottom} x2={cx(v)} y2={H-PAD.bottom+4} stroke="#383028" strokeWidth={1}/>
+              <text x={cx(v)} y={H-PAD.bottom+15} textAnchor="middle" fill="#807060" fontSize={9}>{v.toFixed(0)}%</text>
+            </g>
+          ))}
+          {vTicks.map((v,i)=>(
+            <g key={i}>
+              <line x1={PAD.left-4} y1={cy(v)} x2={PAD.left} y2={cy(v)} stroke="#383028" strokeWidth={1}/>
+              <text x={PAD.left-7} y={cy(v)+4} textAnchor="end" fill="#807060" fontSize={9}>{Math.round(v)}</text>
+            </g>
+          ))}
+          <text x={PAD.left+plotW/2} y={H-4} textAnchor="middle" fill="#6A6260" fontSize={9}>Margem Líquida (%)</text>
+          <text x={13} y={PAD.top+plotH/2} textAnchor="middle" fill="#6A6260" fontSize={9} transform={`rotate(-90,13,${PAD.top+plotH/2})`}>Volume (un. 90d)</text>
+          <text x={PAD.left+8}  y={PAD.top+14}     fill={T.green}  fontSize={8} fontWeight="700" opacity={0.45}>OPORTUNIDADE</text>
+          <text x={refX+8}      y={PAD.top+14}     fill={T.accent} fontSize={8} fontWeight="700" opacity={0.45}>ESTRELA</text>
+          <text x={PAD.left+8}  y={H-PAD.bottom-7} fill={T.red}    fontSize={8} fontWeight="700" opacity={0.45}>PROBLEMA</text>
+          <text x={refX+8}      y={H-PAD.bottom-7} fill={T.orange} fontSize={8} fontWeight="700" opacity={0.45}>POPULAR</text>
+          {enriched.map(p=>{
+            const x=cx(p.netMar),y=cy(p.qty90),q=p.quadrant,isHov=hovered?.id===p.id;
+            const shortName=p.name.length>14?p.name.slice(0,13)+"…":p.name;
+            return(
+              <g key={p.id} onMouseEnter={e=>onEnter(p,e)} style={{cursor:"pointer"}}>
+                {isHov&&<circle cx={x} cy={y} r={26} fill={q.color} fillOpacity={0.12} stroke={q.color} strokeWidth={0.5}/>}
+                <circle cx={x} cy={y} r={18} fill={q.color} fillOpacity={isHov?0.22:0.09} stroke={q.color} strokeWidth={isHov?2:1.4}/>
+                <text x={x} y={y+4} textAnchor="middle" fill={q.color} fontSize={isHov?8:7} fontWeight="700">{shortName}</text>
+              </g>
+            );
+          })}
+          {hovered&&(()=>{
+            const p=hovered,q=p.quadrant,tx=tipX,ty=tipY;
+            const p2=v=>`${Number(v).toFixed(1)}%`,cur=v=>`R$${Number(v).toLocaleString("pt-BR",{maximumFractionDigits:0})}`;
+            return(
+              <g>
+                <rect x={tx+2} y={ty+2} width={TW} height={TH} rx={8} fill="#000" fillOpacity={0.35}/>
+                <rect x={tx} y={ty} width={TW} height={TH} rx={8} fill="#141008" stroke={q.color} strokeWidth={1.5} strokeOpacity={0.6}/>
+                <rect x={tx} y={ty} width={4} height={TH} rx={2} fill={q.color} fillOpacity={0.8}/>
+                <text x={tx+14} y={ty+18} fill={T.sandLight} fontSize={11} fontWeight="800">{p.name.length>22?p.name.slice(0,21)+"…":p.name}</text>
+                <rect x={tx+14} y={ty+24} width={80} height={13} rx={3} fill={q.color} fillOpacity={0.18}/>
+                <text x={tx+54} y={ty+34} textAnchor="middle" fill={q.color} fontSize={8} fontWeight="700">{quadNames[q.label]||q.label}</text>
+                <line x1={tx+8} y1={ty+44} x2={tx+TW-8} y2={ty+44} stroke="#2a2420" strokeWidth={1}/>
+                {[["Margem Bruta",p2(p.grossMar)],["Margem Líquida",p2(p.netMar)],["Volume 90d",`${p.qty90} un`],["Receita 90d",cur(p.rev90)],["Avaliação",`${p.rating}★ (${p.nRat} aval.)`],["WoW",`${p.wow>=0?"+":""}${Number(p.wow).toFixed(0)}%`]].map(([label,val],i)=>(
+                  <g key={label}>
+                    <text x={tx+14}    y={ty+58+i*13} fill="#5e584f" fontSize={9}>{label}</text>
+                    <text x={tx+TW-10} y={ty+58+i*13} textAnchor="end" fill={label==="Margem Líquida"?(p.netMar<0?T.red:p.netMar>12?T.green:T.accent):label==="WoW"?(p.wow>=0?T.green:T.red):T.sand} fontSize={9} fontWeight="700">{val}</text>
+                  </g>
+                ))}
+                <text x={tx+14}    y={ty+TH-10} fill="#3a3430" fontSize={8}>Score de Saúde</text>
+                <text x={tx+TW-10} y={ty+TH-10} textAnchor="end" fill={p.health>70?T.green:p.health>45?T.accent:T.red} fontSize={9} fontWeight="800">{p.health}/100</text>
+              </g>
+            );
+          })()}
+        </svg>
+      </div>
+    </Panel>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MENU ANALYSIS
+═══════════════════════════════════════════════════════════════════════ */
+
+const MenuAnalysis=memo(()=>{
+  const{fin,productOverrides,productHistory,updateProduct,resetProduct,bulkUpdateProducts}=useApp();
+  const[sort,setSort]=useState("rev90");
+  const[menuTab,setMenuTab]=useState("tabela");
+  const[expandedPid,setExpandedPid]=useState(null);
+  const[bulkDraft,setBulkDraft]=useState({});
+  const[bulkApplied,setBulkApplied]=useState(false);
+  const enriched=useMemo(()=>fin.products.map(p=>({...p,health:calcHealthScore(p,fin.avgNetMar,fin.avgVol),quadrant:getQuadrant(p.netMar,p.qty90,fin.avgNetMar,fin.avgVol),isEdited:!!productOverrides[p.id]})),[fin,productOverrides]);
+  const sorted=useMemo(()=>[...enriched].sort((a,b)=>b[sort]-a[sort]),[enriched,sort]);
+  const applyBulk=()=>{
+    const updates=Object.entries(bulkDraft).map(([pid,vals])=>({pid:parseInt(pid),...vals}));
+    if(updates.length===0)return;
+    bulkUpdateProducts(updates,"Edição em massa — cardápio");
+    setBulkDraft({});setBulkApplied(true);setTimeout(()=>setBulkApplied(false),3000);
+  };
+  const bulkChanged=Object.keys(bulkDraft).length;
+  return(
+    <>
+      <SH eyebrow="Inteligência de Cardápio" title="Análise de Produtos"/>
+      <div style={{display:"flex",gap:6,marginBottom:16,borderBottom:T.border,paddingBottom:14}}>
+        {[["tabela","◈  Cardápio & Edição"],["bulk","⊞  Edição em Massa"],["historico","⊟  Histórico de Preços"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setMenuTab(k)} style={{padding:"6px 16px",borderRadius:7,border:`1px solid ${menuTab===k?T.sand:T.edge}`,background:menuTab===k?T.sand+"14":"transparent",color:menuTab===k?T.sand:T.muted,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+        ))}
+        <div style={{flex:1}}/>
+        {productOverrides&&Object.keys(productOverrides).length>0&&(
+          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,color:T.accent}}>
+            <span style={{width:6,height:6,borderRadius:"50%",background:T.accent,display:"inline-block"}}/>
+            {Object.keys(productOverrides).length} produto(s) editado(s)
+          </div>
+        )}
+      </div>
+      {menuTab==="tabela"&&(
+        <>
+          <div style={{background:T.panel,border:`1px solid ${T.accent}1a`,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:11,color:"#A89070"}}>
+            ◈ Clique em qualquer preço ou custo para editar inline. Alterações propagam por todo o sistema imediatamente.
+          </div>
+          <MatrizEstrategica enriched={enriched} fin={fin}/>
+          <Panel>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <PL>Cardápio — {sorted.length} produtos</PL>
+              <div style={{display:"flex",gap:5}}>
+                {[["rev90","Receita"],["netMar","M.Líquida"],["grossMar","M.Bruta"],["qty90","Volume"],["health","Saúde"]].map(([k,l])=>(
+                  <button key={k} onClick={()=>setSort(k)} style={{fontSize:9,padding:"4px 10px",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontWeight:700,background:sort===k?T.sand:"transparent",color:sort===k?T.black:T.muted,border:`1px solid ${sort===k?T.sand:T.edge}`}}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:860}}>
+                <thead>
+                  <tr style={{borderBottom:`1px solid ${T.edge}`}}>
+                    {["#","Produto","Cat.","Preço ✎","C.Var ✎","C.Fix/un","M.Bruta","M.Líquida","Volume","WoW","Saúde","Status",""].map(h=>(
+                      <th key={h} style={{padding:"7px 9px",textAlign:"left",fontSize:8,color:h.includes("✎")?T.accent:"#383430",letterSpacing:"0.12em",fontWeight:700}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((p,i)=>{
+                    const raw=RAW_PRODUCTS.find(r=>r.id===p.id);
+                    const hist=productHistory[p.id]||[];
+                    const lastEdit=hist.find(h=>h.field!=="Reset");
+                    return(
+                      <tr key={p.id} style={{borderBottom:"1px solid #111",background:p.isEdited?T.accent+"07":i%2===0?"transparent":"#0d0b09"}}>
+                        <td style={{padding:"9px 9px",color:"#4A4640",fontSize:8}}>{i+1}</td>
+                        <td style={{padding:"9px 9px",color:T.sandLight,fontWeight:500,maxWidth:160}}>
+                          <div style={{display:"flex",alignItems:"center",gap:5}}>
+                            {p.isEdited&&<span style={{width:5,height:5,borderRadius:"50%",background:T.accent,flexShrink:0}}/>}
+                            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                          </div>
+                          {lastEdit&&<div style={{fontSize:8,color:T.subtle,marginTop:1}}>Editado em {lastEdit.date.slice(0,10)}</div>}
+                        </td>
+                        <td style={{padding:"9px 9px",color:T.muted,fontSize:9,whiteSpace:"nowrap"}}>{p.cat.split(" ")[0]}</td>
+                        <td style={{padding:"6px 9px"}}>
+                          <InlineEditor value={p.price} onSave={v=>updateProduct(p.id,{price:v},"Edição inline")} type="price"/>
+                          {p.isEdited&&raw&&raw.price!==p.price&&<div style={{fontSize:8,color:"#3a3630",textDecoration:"line-through",marginTop:1,fontVariantNumeric:"tabular-nums"}}>R$ {raw.price},00</div>}
+                        </td>
+                        <td style={{padding:"6px 9px"}}>
+                          <InlineEditor value={p.vc} onSave={v=>updateProduct(p.id,{vc:v},"Edição inline")} type="vc"/>
+                          {p.isEdited&&raw&&raw.vc!==p.vc&&<div style={{fontSize:8,color:"#3a3630",textDecoration:"line-through",marginTop:1,fontVariantNumeric:"tabular-nums"}}>R$ {raw.vc},00</div>}
+                        </td>
+                        <td style={{padding:"9px 9px",color:"#6A6460",fontVariantNumeric:"tabular-nums"}}>{$2(p.fixedPerUnit)}</td>
+                        <td style={{padding:"9px 9px",color:p.grossMar>55?T.green:p.grossMar>38?T.accent:T.red,fontWeight:700,fontVariantNumeric:"tabular-nums",fontSize:12}}>{pct(p.grossMar)}</td>
+                        <td style={{padding:"9px 9px",color:p.netMar>12?T.green:p.netMar>0?T.accent:T.red,fontWeight:800,fontVariantNumeric:"tabular-nums",fontSize:12}}>{pct(p.netMar)}</td>
+                        <td style={{padding:"9px 9px",color:"#5a5248",fontVariantNumeric:"tabular-nums"}}>{p.qty90}</td>
+                        <td style={{padding:"9px 9px",color:p.wow>0?T.green:T.red,fontWeight:600,fontSize:10,fontVariantNumeric:"tabular-nums"}}>{p.wow>0?"▲":"▼"}{Math.abs(p.wow).toFixed(0)}%</td>
+                        <td style={{padding:"9px 9px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:5}}>
+                            <div style={{background:"#1a1612",borderRadius:3,height:4,width:40}}>
+                              <div style={{width:`${p.health}%`,background:p.health>70?T.green:p.health>45?T.accent:T.red,height:"100%",borderRadius:3}}/>
+                            </div>
+                            <span style={{fontSize:9,color:T.muted}}>{p.health}</span>
+                          </div>
+                        </td>
+                        <td style={{padding:"9px 9px"}}><Tag color={p.quadrant.color} xs>{p.quadrant.label}</Tag></td>
+                        <td style={{padding:"9px 6px"}}>
+                          {p.isEdited&&<button onClick={()=>resetProduct(p.id)} style={{background:"none",border:"none",cursor:"pointer",color:T.muted,fontSize:10,padding:"2px 4px",borderRadius:4,fontFamily:"inherit"}} onMouseEnter={e=>e.currentTarget.style.color=T.red} onMouseLeave={e=>e.currentTarget.style.color=T.muted}>↺</button>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </>
+      )}
+      {menuTab==="bulk"&&(
+        <Panel>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div><PL>Edição em Massa de Preços & Custos</PL></div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              {bulkChanged>0&&<div style={{fontSize:10,color:T.accent}}>{bulkChanged} produto(s) pendente(s)</div>}
+              <button onClick={applyBulk} disabled={bulkChanged===0} style={{background:bulkChanged>0?T.accent:T.edge,color:bulkChanged>0?T.black:T.muted,border:"none",borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:800,cursor:bulkChanged>0?"pointer":"not-allowed",fontFamily:"inherit"}}>
+                {bulkApplied?"✓ Aplicado!":`Aplicar Tudo ${bulkChanged>0?`(${bulkChanged})`:""}`}
+              </button>
+            </div>
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:720}}>
+              <thead><tr style={{borderBottom:`1px solid ${T.edge}`}}>{["Produto","Cat.","Preço Atual","Novo Preço","C.Var Atual","Novo Custo","M.Bruta Nova","Δ Margem"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:"left",fontSize:8,color:T.subtle,letterSpacing:"0.1em",fontWeight:700}}>{h}</th>)}</tr></thead>
+              <tbody>
+                {fin.products.map((p,i)=>{
+                  const d=bulkDraft[p.id]||{};
+                  const np=d.price!==undefined?d.price:p.price,nv=d.vc!==undefined?d.vc:p.vc;
+                  const newGM=np>0?((np-nv)/np*100):0,changed=d.price!==undefined||d.vc!==undefined;
+                  return(
+                    <tr key={p.id} style={{borderBottom:"1px solid #0f0d0b",background:changed?T.accent+"0a":i%2===0?"transparent":"#0d0b09"}}>
+                      <td style={{padding:"8px 10px",color:changed?T.sand:T.sandLight,fontWeight:changed?600:400}}>{changed&&<span style={{color:T.accent,marginRight:5}}>●</span>}{p.name}</td>
+                      <td style={{padding:"8px 10px",color:T.muted,fontSize:9}}>{p.cat.split(" ")[0]}</td>
+                      <td style={{padding:"8px 10px",color:"#5a5248",fontVariantNumeric:"tabular-nums"}}>{$(p.price)}</td>
+                      <td style={{padding:"8px 10px"}}>
+                        <input type="number" value={d.price!==undefined?d.price:""} placeholder={p.price.toFixed(2)} onChange={e=>{const v=e.target.value===""?undefined:parseFloat(e.target.value);setBulkDraft(prev=>{const next={...prev};if(!next[p.id])next[p.id]={};if(v===undefined){delete next[p.id].price;if(Object.keys(next[p.id]).length===0)delete next[p.id];}else next[p.id].price=v;return next;});}} style={{width:80,background:"#0e0c0a",border:`1px solid ${d.price!==undefined?T.accent+"66":T.edge}`,borderRadius:5,padding:"5px 8px",fontSize:11,color:T.sand,outline:"none",fontFamily:"inherit",fontVariantNumeric:"tabular-nums"}}/>
+                      </td>
+                      <td style={{padding:"8px 10px",color:"#6A6460",fontVariantNumeric:"tabular-nums"}}>{$(p.vc)}</td>
+                      <td style={{padding:"8px 10px"}}>
+                        <input type="number" value={d.vc!==undefined?d.vc:""} placeholder={p.vc.toFixed(2)} onChange={e=>{const v=e.target.value===""?undefined:parseFloat(e.target.value);setBulkDraft(prev=>{const next={...prev};if(!next[p.id])next[p.id]={};if(v===undefined){delete next[p.id].vc;if(Object.keys(next[p.id]).length===0)delete next[p.id];}else next[p.id].vc=v;return next;});}} style={{width:80,background:"#0e0c0a",border:`1px solid ${d.vc!==undefined?T.accent+"66":T.edge}`,borderRadius:5,padding:"5px 8px",fontSize:11,color:T.sand,outline:"none",fontFamily:"inherit",fontVariantNumeric:"tabular-nums"}}/>
+                      </td>
+                      <td style={{padding:"8px 10px",color:newGM>55?T.green:newGM>38?T.accent:T.red,fontWeight:changed?700:400,fontVariantNumeric:"tabular-nums"}}>{pct(newGM)}</td>
+                      <td style={{padding:"8px 10px",fontVariantNumeric:"tabular-nums",color:newGM-p.grossMar>0?T.green:newGM-p.grossMar<0?T.red:T.muted,fontWeight:changed?700:400}}>{changed?`${(newGM-p.grossMar)>0?"+":""}${(newGM-p.grossMar).toFixed(1)}pp`:"—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+      {menuTab==="historico"&&(
+        <Panel>
+          <PL>Histórico de Alterações de Preço & Custo</PL>
+          {Object.keys(productHistory).length===0?(
+            <div style={{textAlign:"center",padding:"40px 0",color:T.muted,fontSize:12}}><div style={{fontSize:24,opacity:0.06,marginBottom:10}}>⊟</div>Nenhuma alteração registrada ainda.</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {Object.entries(productHistory).sort(([a],[b])=>{const ad=productHistory[a][0]?.date||"",bd=productHistory[b][0]?.date||"";return bd.localeCompare(ad);}).map(([pid,hist])=>{
+                const p=fin.products.find(x=>x.id===parseInt(pid));if(!p)return null;
+                const isOpen=expandedPid===parseInt(pid);
+                return(
+                  <div key={pid} style={{background:"#101008",border:`1px solid ${T.edge}`,borderRadius:9}}>
+                    <button onClick={()=>setExpandedPid(isOpen?null:parseInt(pid))} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 14px",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderRadius:9}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <span style={{fontSize:12,color:T.sand,fontWeight:700}}>{p.name}</span>
+                        <Tag color={T.accent} xs>{hist.length} alteração(ões)</Tag>
+                        <span style={{fontSize:9,color:T.muted}}>{p.cat}</span>
+                      </div>
+                      <span style={{color:T.muted,fontSize:10}}>{isOpen?"▲":"▼"}</span>
+                    </button>
+                    {isOpen&&(
+                      <div style={{padding:"0 14px 14px"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                          <thead><tr style={{borderBottom:`1px solid ${T.edge}`}}>{["Data","Campo","Anterior","Novo","Δ","Nota"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left",fontSize:8,color:T.subtle,letterSpacing:"0.1em",fontWeight:700}}>{h}</th>)}</tr></thead>
+                          <tbody>
+                            {hist.map((h,i)=>{
+                              const delta=h.field==="Reset"?null:(h.newVal-h.oldVal);
+                              return(
+                                <tr key={i} style={{borderBottom:"1px solid #0f0d0b"}}>
+                                  <td style={{padding:"7px 8px",color:"#6A6460",fontSize:9}}>{h.date}</td>
+                                  <td style={{padding:"7px 8px"}}><Tag color={h.field==="Reset"?T.muted:h.field==="Preço"?T.accent:T.blue} xs>{h.field}</Tag></td>
+                                  <td style={{padding:"7px 8px",color:"#5a5248",textDecoration:"line-through"}}>{h.oldVal!=null?`R$ ${_num(h.oldVal).toFixed(2)}`:"—"}</td>
+                                  <td style={{padding:"7px 8px",color:T.sand,fontWeight:700}}>{h.newVal!=null?`R$ ${_num(h.newVal).toFixed(2)}`:"—"}</td>
+                                  <td style={{padding:"7px 8px",color:delta==null?T.muted:delta>0?T.green:T.red,fontWeight:600}}>{delta==null?"—":`${delta>0?"+":""}R$ ${Math.abs(delta).toFixed(2)}`}</td>
+                                  <td style={{padding:"7px 8px",color:T.subtle,fontSize:9}}>{h.note}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      )}
+    </>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SIMULATION
+═══════════════════════════════════════════════════════════════════════ */
+
+const Simulation=memo(()=>{
+  const{fin,addProduct,updateProduct}=useApp();
+  const[simTab,setSimTab]=useState("price");
+  const[selPid,setSelPid]=useState(fin.products[0]?.id||1);
+  const[newPrice,setNewPrice]=useState("");
+  const[applyConfirm,setApplyConfirm]=useState(false);
+  const selProduct=useMemo(()=>fin.products.find(p=>p.id===selPid),[fin,selPid]);
+  const priceResult=useMemo(()=>selProduct&&newPrice?simulatePrice(selProduct,parseFloat(newPrice),fin):null,[selProduct,newPrice,fin]);
+  useEffect(()=>{setApplyConfirm(false);},[selPid,newPrice]);
+  const[npForm,setNpForm]=useState({name:"",cat:"Pizzas Tradicionais",price:"",vc:"",role:"Diferencial"});
+  const npResult=useMemo(()=>{const p=parseFloat(npForm.price),v=parseFloat(npForm.vc);return npForm.name&&p&&v?simulateNewProduct(npForm.name,npForm.cat,p,v,npForm.role,fin):null;},[npForm,fin]);
+  const npF=(k,v)=>setNpForm(p=>({...p,[k]:v}));
+  const[npHistory,setNpHistory]=useState([
+    {id:1,name:"Frango Buffalo",cat:"Pizzas Especiais",price:82,vc:44,score:88,rec:true,date:"10 fev",added:false},
+    {id:2,name:"Borda de Doce de Leite",cat:"Bordas Recheadas",price:16,vc:5,score:82,rec:true,date:"05 fev",added:false},
+    {id:3,name:"Pizza Vegana",cat:"Pizzas Especiais",price:72,vc:38,score:61,rec:false,date:"28 jan",added:false},
+  ]);
+  const[addConfirm,setAddConfirm]=useState(false);
+  const[addedIds,setAddedIds]=useState(new Set());
+  useEffect(()=>{setAddConfirm(false);},[npForm.name,npForm.price,npForm.vc]);
+  const handleAddToMenu=()=>{
+    if(!addConfirm){setAddConfirm(true);return;}
+    const p=parseFloat(npForm.price),v=parseFloat(npForm.vc);
+    const newId=addProduct({name:npForm.name,cat:npForm.cat,price:p,vc:v,role:npForm.role});
+    if(newId){
+      setAddedIds(prev=>new Set([...prev,npForm.name.toLowerCase()]));
+      setNpHistory(h=>[{id:Date.now(),name:npForm.name,cat:npForm.cat,price:p,vc:v,score:npResult?.score||0,rec:npResult?.rec||false,date:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}),added:true},...h]);
+      setNpForm({name:"",cat:"Pizzas Tradicionais",price:"",vc:"",role:"Diferencial"});
+    }
+    setAddConfirm(false);
+  };
+  const isAlreadyAdded=npForm.name&&(addedIds.has(npForm.name.toLowerCase())||fin.products.some(p=>p.name?.toLowerCase()===npForm.name.toLowerCase()));
+  return(
+    <>
+      <SH eyebrow="Análise Preditiva" title="Simulador Estratégico"/>
+      <div style={{display:"flex",gap:6,marginBottom:20}}>
+        {[["price","Simulador de Preço"],["new","Novo Produto"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setSimTab(k)} style={{padding:"7px 18px",borderRadius:8,border:`1px solid ${simTab===k?T.sand:T.edge}`,background:simTab===k?T.sand+"18":"transparent",color:simTab===k?T.sand:T.muted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+        ))}
+      </div>
+      {simTab==="price"&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          <Panel>
+            <PL>Selecionar Produto e Novo Preço</PL>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:9,color:T.muted,letterSpacing:"0.12em",display:"block",marginBottom:5}}>Produto</label>
+              <select value={selPid} onChange={e=>setSelPid(parseInt(e.target.value))} style={{width:"100%",background:"#121008",border:T.border,borderRadius:7,padding:"8px 12px",fontSize:12,color:T.sand,outline:"none",fontFamily:"inherit"}}>
+                {fin.products.map(p=><option key={p.id} value={p.id}>{p.name} — {$(p.price)}</option>)}
+              </select>
+            </div>
+            {selProduct&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                {[["Preço Atual",$(selProduct.price)],["Custo Var.",$(selProduct.vc)],["M.Bruta Atual",pct(selProduct.grossMar)],["M.Líq. Atual",pct(selProduct.netMar)]].map(([l,v])=>(
+                  <div key={l} style={{background:"#121008",borderRadius:7,padding:"8px 11px"}}>
+                    <div style={{fontSize:8,color:T.muted,marginBottom:2}}>{l}</div>
+                    <div style={{fontSize:12,color:T.sand,fontWeight:600}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div>
+              <label style={{fontSize:9,color:T.muted,letterSpacing:"0.12em",display:"block",marginBottom:5}}>Novo Preço (R$)</label>
+              <input type="number" value={newPrice} onChange={e=>setNewPrice(e.target.value)} placeholder={selProduct?String(selProduct.price):"0"} style={{width:"100%",background:"#121008",border:T.border,borderRadius:7,padding:"8px 12px",fontSize:12,color:T.sand,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+          </Panel>
+          <Panel>
+            <PL>Projeção de Impacto — 3 Cenários</PL>
+            {priceResult?(
+              <>
+                {priceResult.inDeadZone?(
+                  <div style={{display:"flex",gap:10,alignItems:"center",background:T.green+"0d",border:`1px solid ${T.green}22`,borderRadius:8,padding:"9px 13px",marginBottom:14}}>
+                    <span style={{fontSize:14,flexShrink:0}}>◎</span>
+                    <div>
+                      <div style={{fontSize:10,color:T.green,fontWeight:700,letterSpacing:"0.1em",marginBottom:2}}>ZONA DE INSENSIBILIDADE</div>
+                      <div style={{fontSize:11,color:"#6a8a6a",lineHeight:1.55}}>Variação de <b style={{color:T.sand}}>{(priceResult.pctChange*100).toFixed(1)}%</b> está dentro do limiar de <b style={{color:T.sand}}>±{(priceResult.deadZone*100).toFixed(1)}%</b>. Volume tende a ser estável.</div>
+                    </div>
+                  </div>
+                ):(
+                  <div style={{display:"flex",gap:8,alignItems:"center",background:T.accent+"0a",border:`1px solid ${T.accent}1a`,borderRadius:8,padding:"8px 12px",marginBottom:14}}>
+                    <div style={{fontSize:10,color:"#7a7060",lineHeight:1.5}}>Variação de <b style={{color:T.sand}}>{(priceResult.pctChange*100).toFixed(1)}%</b>. Elasticidade aplicada: <b style={{color:T.sand}}>{priceResult.elastBase.toFixed(2)}</b>.</div>
+                  </div>
+                )}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                  {[{l:"Nova Margem Bruta",v:pct(priceResult.newGrossMar),c:priceResult.newGrossMar>selProduct.grossMar?T.green:T.red},{l:"Nova Margem Líquida",v:pct(priceResult.newNetMar),c:priceResult.newNetMar>selProduct.netMar?T.green:T.red}].map(({l,v,c})=>(
+                    <div key={l} style={{background:"#121008",borderRadius:7,padding:"9px 12px"}}>
+                      <div style={{fontSize:8,color:T.muted,marginBottom:3}}>{l}</div>
+                      <div style={{fontSize:15,color:c,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+                  {[{key:"otimista",label:"OTIMISTA",icon:"▲",color:T.green},{key:"base",label:"BASE",icon:"◎",color:T.accent},{key:"pessimista",label:"PESSIMISTA",icon:"▼",color:T.red}].map(({key,label,icon,color})=>{
+                    const s=priceResult.scenarios[key];const volDelta=s.volImpact-selProduct.qty90;
+                    return(
+                      <div key={key} style={{background:"#101008",border:`1px solid ${color}22`,borderTop:`2px solid ${color}`,borderRadius:"0 0 9px 9px",padding:"12px 11px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:10}}>
+                          <span style={{fontSize:10,color}}>{icon}</span>
+                          <span style={{fontSize:9,color,fontWeight:800,letterSpacing:"0.1em"}}>{label}</span>
+                        </div>
+                        <div style={{marginBottom:7}}>
+                          <div style={{fontSize:8,color:T.muted,marginBottom:2}}>Volume (90d)</div>
+                          <div style={{fontSize:14,color:T.sand,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{s.volImpact} <span style={{fontSize:9,color:T.subtle}}>un</span></div>
+                          <div style={{fontSize:9,fontVariantNumeric:"tabular-nums",color:volDelta===0?T.muted:volDelta>0?T.green:T.orange,marginTop:1}}>{volDelta===0?"sem alteração":`${volDelta>0?"+":""}${volDelta} un`}</div>
+                        </div>
+                        <div style={{marginBottom:7}}>
+                          <div style={{fontSize:8,color:T.muted,marginBottom:2}}>Receita (90d)</div>
+                          <div style={{fontSize:13,color:s.revDelta>=0?T.green:T.red,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{$(s.newRev)}</div>
+                          <div style={{fontSize:9,fontVariantNumeric:"tabular-nums",color:s.revDelta>=0?T.green:T.red}}>{s.revDelta>=0?"+":""}{$(s.revDelta)}</div>
+                        </div>
+                        <div>
+                          <div style={{fontSize:8,color:T.muted,marginBottom:2}}>Lucro Bruto (90d)</div>
+                          <div style={{fontSize:11,color:s.gpDelta>=0?T.green:T.red,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{s.gpDelta>=0?"+":""}{$(s.gpDelta)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{marginTop:16,borderTop:`1px solid ${T.edge}`,paddingTop:16}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div style={{background:"#101008",border:`1px solid ${T.edge}`,borderRadius:10,padding:"12px 14px"}}>
+                      <div style={{fontSize:10,color:T.muted,fontWeight:700,letterSpacing:"0.1em",marginBottom:6}}>◎ MODO SIMULAÇÃO</div>
+                      <div style={{fontSize:10,color:T.subtle,lineHeight:1.55}}>Nenhum dado real foi alterado. Preços do cardápio inalterados.</div>
+                    </div>
+                    <div style={{background:applyConfirm?T.green+"14":T.accent+"0d",border:`2px solid ${applyConfirm?T.green:T.accent}44`,borderRadius:10,padding:"12px 14px"}}>
+                      <div style={{fontSize:10,color:applyConfirm?T.green:T.accent,fontWeight:800,letterSpacing:"0.1em",marginBottom:6}}>{applyConfirm?"⚠ CONFIRMAÇÃO":"✦ APLICAR REAL"}</div>
+                      {!applyConfirm?(
+                        <button onClick={()=>setApplyConfirm(true)} style={{width:"100%",background:T.accent+"22",border:`1px solid ${T.accent}55`,borderRadius:7,padding:"8px 0",fontSize:11,fontWeight:800,color:T.accent,cursor:"pointer",fontFamily:"inherit"}}>Aplicar Preço Real →</button>
+                      ):(
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
+                          <button onClick={()=>{updateProduct(selProduct.id,{price:parseFloat(newPrice)},`Simulador → R$ ${parseFloat(newPrice).toFixed(2)}`);setApplyConfirm(false);setNewPrice("");}} style={{background:T.green+"22",border:`1px solid ${T.green}55`,borderRadius:7,padding:"8px 0",fontSize:11,fontWeight:800,color:T.green,cursor:"pointer",fontFamily:"inherit"}}>✓ Confirmar</button>
+                          <button onClick={()=>setApplyConfirm(false)} style={{background:"transparent",border:`1px solid ${T.edge}`,borderRadius:7,padding:"8px 0",fontSize:11,color:T.muted,cursor:"pointer",fontFamily:"inherit"}}>✕ Cancelar</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ):(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:280,color:T.muted,fontSize:12,flexDirection:"column",gap:10}}>
+                <div style={{fontSize:28,opacity:0.06}}>🍕</div>
+                <div>Informe um novo preço para ver a projeção.</div>
+              </div>
+            )}
+          </Panel>
+        </div>
+      )}
+      {simTab==="new"&&(
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            <Panel>
+              <PL>Dados do Novo Produto</PL>
+              <div style={{display:"flex",flexDirection:"column",gap:11}}>
+                {[{l:"Nome*",k:"name",ph:"ex: Camarão Flambado",t:"text"},{l:"Custo Variável (R$)*",k:"vc",ph:"45.00",t:"number"},{l:"Preço Desejado (R$)*",k:"price",ph:"89.00",t:"number"}].map(({l,k,ph,t})=>(
+                  <div key={k}>
+                    <label style={{fontSize:9,color:T.muted,letterSpacing:"0.12em",display:"block",marginBottom:4}}>{l}</label>
+                    <input type={t} value={npForm[k]} onChange={e=>npF(k,e.target.value)} placeholder={ph} style={{width:"100%",background:"#121008",border:T.border,borderRadius:7,padding:"8px 12px",fontSize:12,color:T.sand,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  </div>
+                ))}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  {[{l:"Categoria*",k:"cat",opts:["Pizzas Tradicionais","Pizzas Especiais","Bordas Recheadas","Bebidas","Sobremesas"]},{l:"Papel*",k:"role",opts:["Carro-chefe","Premium","Volume","Diferencial","Complemento"]}].map(({l,k,opts})=>(
+                    <div key={k}>
+                      <label style={{fontSize:9,color:T.muted,letterSpacing:"0.12em",display:"block",marginBottom:4}}>{l}</label>
+                      <select value={npForm[k]} onChange={e=>npF(k,e.target.value)} style={{width:"100%",background:"#121008",border:T.border,borderRadius:7,padding:"8px 12px",fontSize:12,color:T.sand,outline:"none",fontFamily:"inherit"}}>
+                        {opts.map(o=><option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Panel>
+            {npResult?(
+              <Panel>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+                  <div><PL>Score FLAV</PL><div style={{fontSize:15,fontWeight:800,color:T.sand}}>{npForm.name}</div></div>
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontSize:44,fontWeight:900,lineHeight:1,fontFamily:"Georgia,serif",color:npResult.score>=80?T.green:npResult.score>=65?T.accent:T.red}}>{npResult.score}</div>
+                    <div style={{fontSize:8,color:T.muted}}>/ 100</div>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:13}}>
+                  {[{l:"M.Bruta",v:pct(npResult.grossMar)},{l:"M.Líq. est.",v:pct(npResult.estNetMar)},{l:"Proj./sem",v:`${npResult.estQtyWeek} un`},{l:"Canibalização",v:npResult.canibal},{l:"Cat. saturada?",v:npResult.catProds>=6?"Sim":"Não"}].map(({l,v})=>(
+                    <div key={l} style={{background:"#121008",borderRadius:7,padding:"7px 10px"}}>
+                      <div style={{fontSize:8,color:T.muted,marginBottom:2}}>{l}</div>
+                      <div style={{fontSize:12,color:T.sand,fontWeight:700}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{background:npResult.rec?T.green+"0d":T.red+"0d",border:`1px solid ${npResult.rec?T.green:T.red}22`,borderRadius:8,padding:"10px 13px",marginBottom:10}}>
+                  <div style={{fontSize:10,color:npResult.rec?T.green:T.red,fontWeight:700,marginBottom:4}}>{npResult.rec?"✦ RECOMENDADO":"✕ NÃO RECOMENDADO"}</div>
+                  <div style={{fontSize:11,color:"#A8A090",lineHeight:1.65}}>Margem bruta de {pct(npResult.grossMar)} e líquida estimada de {pct(npResult.estNetMar)}. Risco de canibalização: {npResult.canibal.toLowerCase()}.</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
+                  <button onClick={()=>setNpHistory(h=>[{id:Date.now(),name:npForm.name,cat:npForm.cat,price:parseFloat(npForm.price),vc:parseFloat(npForm.vc),score:npResult.score,rec:npResult.rec,date:new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}),added:false},...h])} style={{width:"100%",background:"transparent",border:T.border,color:T.muted,borderRadius:7,padding:"7px 0",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Salvar no histórico de simulações</button>
+                  {isAlreadyAdded?<div style={{textAlign:"center",padding:"10px",background:T.green+"0d",border:`1px solid ${T.green}33`,borderRadius:8}}><span style={{fontSize:11,color:T.green,fontWeight:700}}>✓ Produto já adicionado ao cardápio</span></div>:
+                  !addConfirm?<button onClick={handleAddToMenu} style={{width:"100%",background:npResult.rec?T.accent+"18":T.edge,border:`1px solid ${npResult.rec?T.accent+"55":T.edge}`,borderRadius:8,padding:"10px 0",fontSize:11,fontWeight:800,color:npResult.rec?T.accent:T.muted,cursor:"pointer",fontFamily:"inherit"}}>✦ Confirmar adição ao cardápio</button>:
+                  <div style={{background:T.accent+"0d",border:`2px solid ${T.accent}44`,borderRadius:10,padding:"12px 14px"}}>
+                    <div style={{fontSize:10,color:T.accent,fontWeight:800,marginBottom:6}}>⚠ CONFIRMAÇÃO NECESSÁRIA</div>
+                    <div style={{fontSize:10,color:"#A08870",lineHeight:1.6,marginBottom:10}}><b style={{color:T.sand}}>{npForm.name}</b> será adicionado ao cardápio com preço <b style={{color:T.sand}}>{$(parseFloat(npForm.price))}</b>.</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                      <button onClick={handleAddToMenu} style={{background:T.green+"22",border:`1px solid ${T.green}55`,borderRadius:7,padding:"8px 0",fontSize:11,fontWeight:800,color:T.green,cursor:"pointer",fontFamily:"inherit"}}>✓ Adicionar</button>
+                      <button onClick={()=>setAddConfirm(false)} style={{background:"transparent",border:`1px solid ${T.edge}`,borderRadius:7,padding:"8px 0",fontSize:11,color:T.muted,cursor:"pointer",fontFamily:"inherit"}}>✕ Cancelar</button>
+                    </div>
+                  </div>}
+                </div>
+              </Panel>
+            ):(
+              <Panel style={{display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"}}>
+                <div><div style={{fontSize:28,opacity:0.08,marginBottom:10}}>🍕</div><div style={{fontSize:12,color:T.muted}}>Preencha os dados para gerar a análise.</div></div>
+              </Panel>
+            )}
+          </div>
+          <Panel>
+            <PL>Histórico de Simulações</PL>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <thead><tr style={{borderBottom:`1px solid ${T.edge}`}}>{["Produto","Cat.","Preço","Custo","Score","Recomendação","Data"].map(h=><th key={h} style={{padding:"7px 9px",textAlign:"left",fontSize:8,color:T.subtle,letterSpacing:"0.1em",fontWeight:700}}>{h}</th>)}</tr></thead>
+              <tbody>{npHistory.map((s,i)=>(
+                <tr key={s.id} style={{borderBottom:"1px solid #111",background:i%2===0?"transparent":"#0d0b09"}}>
+                  <td style={{padding:"9px 9px",color:T.sandLight,fontWeight:500}}>{s.name}</td>
+                  <td style={{padding:"9px 9px",color:T.muted,fontSize:10}}>{s.cat}</td>
+                  <td style={{padding:"9px 9px",color:T.sand}}>{$(s.price)}</td>
+                  <td style={{padding:"9px 9px",color:"#6A6460"}}>{$(s.vc)}</td>
+                  <td style={{padding:"9px 9px",color:s.score>=80?T.green:s.score>=65?T.accent:T.red,fontWeight:800}}>{s.score}</td>
+                  <td style={{padding:"9px 9px"}}>{s.added?<Tag color={T.green} xs>✓ No Cardápio</Tag>:<Tag color={s.rec?T.accent:T.red} xs>{s.rec?"Recomendar":"Não incluir"}</Tag>}</td>
+                  <td style={{padding:"9px 9px",color:T.subtle}}>{s.date}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </Panel>
+        </>
+      )}
+    </>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PIE CHART
+═══════════════════════════════════════════════════════════════════════ */
+
+const PIE_COLORS={aluguel:"#E07820",energia:"#58B868",agua:"#5090C8",gas:"#D08040",folha:"#D45050",taxas:"#9070C0",marketing:"#40A8A8",outros:"#808070"};
+
+const CostPieChart=memo(({costs,totalFixed})=>{
+  const[hovered,setHovered]=useState(null);
+  const SIZE=160,R=62,CX=SIZE/2,CY=SIZE/2,INNER_R=38;
+  const entries=Object.entries(costs).filter(([,v])=>v>0);
+  const total=totalFixed||entries.reduce((a,[,v])=>a+v,0)||1;
+  let cumAngle=-Math.PI/2;
+  const slices=entries.map(([k,v])=>{
+    const pct2=v/total,angle=pct2*2*Math.PI,start=cumAngle,end=cumAngle+angle;
+    cumAngle=end;
+    const x1=CX+R*Math.cos(start),y1=CY+R*Math.sin(start);
+    const x2=CX+R*Math.cos(end),y2=CY+R*Math.sin(end);
+    const xi1=CX+INNER_R*Math.cos(start),yi1=CY+INNER_R*Math.sin(start);
+    const xi2=CX+INNER_R*Math.cos(end),yi2=CY+INNER_R*Math.sin(end);
+    const large=angle>Math.PI?1:0;
+    const path=`M ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${INNER_R} ${INNER_R} 0 ${large} 0 ${xi1} ${yi1} Z`;
+    return{key:k,path,pct:pct2,v,color:PIE_COLORS[k]||T.muted};
+  });
+  const hoveredSlice=hovered?slices.find(s=>s.key===hovered):null;
+  return(
+    <div>
+      <style>{`.pie-slice{transition:opacity 0.18s,transform 0.18s;transform-origin:center;}.pie-slice:hover{opacity:1!important;}`}</style>
+      <div style={{display:"flex",alignItems:"center",gap:16}}>
+        <div style={{position:"relative",flexShrink:0}}>
+          <svg width={SIZE} height={SIZE} style={{overflow:"visible"}}>
+            {slices.map(s=><path key={s.key} className="pie-slice" d={s.path} fill={s.color} opacity={hovered&&hovered!==s.key?0.35:0.85} stroke={T.bg} strokeWidth={2} style={{cursor:"pointer",transform:hovered===s.key?"scale(1.04)":"scale(1)"}} onMouseEnter={()=>setHovered(s.key)} onMouseLeave={()=>setHovered(null)}/>)}
+            <text x={CX} y={CY-6} textAnchor="middle" fill={T.sandLight} fontSize={11} fontWeight={800} fontFamily="Georgia,serif">{hoveredSlice?`${(hoveredSlice.pct*100).toFixed(0)}%`:`${(total/1000).toFixed(0)}k`}</text>
+            <text x={CX} y={CY+10} textAnchor="middle" fill={T.muted} fontSize={7} letterSpacing="0.08em">{hoveredSlice?COST_LABELS[hoveredSlice.key]?.substring(0,8):"TOTAL"}</text>
+          </svg>
+        </div>
+        <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+          {slices.map(s=>(
+            <div key={s.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",opacity:hovered&&hovered!==s.key?0.4:1,transition:"opacity 0.15s",padding:"2px 0"}} onMouseEnter={()=>setHovered(s.key)} onMouseLeave={()=>setHovered(null)}>
+              <div style={{display:"flex",alignItems:"center",gap:7}}><div style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/><span style={{fontSize:10,color:hovered===s.key?T.sandLight:"#A8A090"}}>{COST_LABELS[s.key]}</span></div>
+              <div style={{textAlign:"right"}}><span style={{fontSize:10,color:T.sand,fontWeight:hovered===s.key?700:500,fontVariantNumeric:"tabular-nums"}}>{$(s.v)}</span><span style={{fontSize:9,color:s.color,marginLeft:5,fontVariantNumeric:"tabular-nums"}}>{(s.pct*100).toFixed(0)}%</span></div>
+            </div>
+          ))}
+          <div style={{borderTop:`1px solid ${T.edge}`,paddingTop:6,display:"flex",justifyContent:"space-between"}}>
+            <span style={{fontSize:10,color:T.muted}}>Total mensal</span>
+            <span style={{fontSize:13,fontWeight:800,color:T.sand,fontVariantNumeric:"tabular-nums"}}>{$(total)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   COSTS
+═══════════════════════════════════════════════════════════════════════ */
+
+const Costs=memo(()=>{
+  const{fin,costs,costLog,updateCosts}=useApp();
+  const[draft,setDraft]=useState({...costs});
+  const[dirty,setDirty]=useState(false);
+  const[saving,setSaving]=useState(false);
+  useEffect(()=>{setDraft({...costs});setDirty(false);},[costs]);
+  const change=(k,v)=>{setDraft(p=>({...p,[k]:parseFloat(v)||0}));setDirty(true);};
+  const draftFin=useMemo(()=>calcFinancials(draft),[draft]);
+  const draftTotal=useMemo(()=>Object.values(draft).reduce((a,b)=>a+b,0),[draft]);
+  const save=()=>{setSaving(true);setTimeout(()=>{updateCosts(draft);setDirty(false);setSaving(false);},350);};
+  return(
+    <>
+      <SH eyebrow="Núcleo Financeiro" title="Estrutura de Custos"/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginBottom:18}}>
+        <KPI label="Receita (30d)" value={$(fin.totalRev30)}/>
+        <KPI label="Lucro Bruto (30d)" value={$(fin.totalGP30)} color={T.green}/>
+        <KPI label="Custos Fixos" value={$(fin.totalFixed)} color={T.red}/>
+        <KPI label="Lucro Líquido" value={$(fin.netProfit30)} color={fin.netProfit30>0?T.green:T.red}/>
+        <KPI label="Margem Líquida" value={pct(fin.netMar30)} color={fin.netMar30>12?T.green:fin.netMar30>5?T.accent:T.red}/>
+        <KPI label="Ponto Equilíbrio" value={$(fin.breakeven)} sub="/mês"/>
+      </div>
+      {dirty&&(
+        <div style={{background:"#121008",border:`1px solid ${T.accent}33`,borderRadius:10,padding:"12px 18px",marginBottom:14,display:"flex",gap:22,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{fontSize:9,color:T.accent,fontWeight:700,letterSpacing:"0.12em"}}>◈ PRÉVIA EM TEMPO REAL</div>
+          {[{l:"Custos Fixos",prev:$(fin.totalFixed),next:$(draftTotal),delta:draftTotal-fin.totalFixed,isRev:false},{l:"Margem Líquida",prev:pct(fin.netMar30),next:pct(draftFin.netMar30),delta:draftFin.netMar30-fin.netMar30,isRev:true},{l:"Lucro Líquido/mês",prev:$(fin.netProfit30),next:$(draftFin.netProfit30),delta:draftFin.netProfit30-fin.netProfit30,isRev:false}].map(({l,prev,next,delta,isRev})=>(
+            <div key={l}>
+              <div style={{fontSize:8,color:T.muted,marginBottom:3}}>{l}</div>
+              <div style={{fontSize:12}}>
+                <span style={{color:"#5a5248",textDecoration:"line-through",fontVariantNumeric:"tabular-nums"}}>{prev}</span>
+                <span style={{color:T.subtle,margin:"0 5px"}}>→</span>
+                <span style={{color:(isRev?delta>0:delta<0)?T.green:T.red,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{next}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <Panel>
+          <PL>Editar Custos Fixos Mensais</PL>
+          {Object.entries(draft).map(([k,v])=>(
+            <div key={k} style={{marginBottom:11}}>
+              <label style={{fontSize:9,color:T.muted,letterSpacing:"0.12em",display:"block",marginBottom:4}}>{COST_LABELS[k]}</label>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:10,color:T.subtle}}>R$</span>
+                <input type="number" value={v} onChange={e=>change(k,e.target.value)} style={{flex:1,background:"#121008",border:`1px solid ${v!==costs[k]?T.accent+"66":T.edge}`,borderRadius:7,padding:"7px 11px",fontSize:12,color:T.sand,outline:"none",fontFamily:"inherit"}}/>
+                {v!==costs[k]&&<span style={{fontSize:9,color:T.accent}}>↑</span>}
+              </div>
+            </div>
+          ))}
+          <button onClick={save} disabled={!dirty||saving} style={{width:"100%",background:!dirty?T.edge:saving?"#2a2420":T.sand,color:!dirty||saving?T.muted:T.black,border:"none",borderRadius:8,padding:"10px 0",fontSize:12,fontWeight:800,cursor:dirty&&!saving?"pointer":"not-allowed",fontFamily:"inherit",marginTop:4,transition:"all 0.2s"}}>
+            {saving?"Recalculando sistema…":dirty?"Salvar & Recalcular":"Sem alterações"}
+          </button>
+        </Panel>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Panel><PL>Distribuição por Categoria</PL><CostPieChart costs={draft} totalFixed={draftTotal}/></Panel>
+          <Panel>
+            <PL>Log de Alterações</PL>
+            {costLog.slice(0,4).map((h,i)=>(
+              <div key={i} style={{borderBottom:`1px solid ${T.edge}`,paddingBottom:8,marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{fontSize:10,color:T.sandLight}}>{h.note}</span>
+                  <span style={{fontSize:9,color:T.subtle}}>{h.date}</span>
+                </div>
+                {h.impact&&<div style={{fontSize:10,color:h.impact.marDelta>0?T.green:T.red,fontVariantNumeric:"tabular-nums"}}>Margem: {pct(h.impact.prevMar)} → {pct(h.impact.nextMar)}</div>}
+              </div>
+            ))}
+          </Panel>
+        </div>
+      </div>
+    </>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MONTHLY REPORT
+═══════════════════════════════════════════════════════════════════════ */
+
+const MonthlyReport=memo(()=>{
+  const{fin}=useApp();
+  const report=useMemo(()=>buildMonthlyReport(fin),[fin]);
+  const{conc,pos}=report;
+  return(
+    <>
+      <SH eyebrow="Relatório Estratégico" title="Relatório Executivo Mensal"/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <Panel>
+          <PL>Resumo Financeiro</PL>
+          {[{l:"Faturamento (30d)",v:$(fin.totalRev30)},{l:"Lucro Bruto",v:$(fin.totalGP30)},{l:"Custos Fixos",v:$(fin.totalFixed)},{l:"Lucro Líquido",v:$(fin.netProfit30),c:fin.netProfit30>0?T.green:T.red},{l:"Margem Líquida",v:pct(fin.netMar30),c:fin.netMar30>12?T.green:fin.netMar30>5?T.accent:T.red},{l:"Ponto de Equilíbrio",v:$(fin.breakeven)},{l:"Ticket Médio",v:$2(fin.avgTicketVal)}].map(({l,v,c})=>(
+            <div key={l} style={{display:"flex",justifyContent:"space-between",marginBottom:9,paddingBottom:9,borderBottom:`1px solid ${T.edge}`}}>
+              <span style={{fontSize:12,color:"#A8A090"}}>{l}</span>
+              <span style={{fontSize:12,color:c||T.sand,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{v}</span>
+            </div>
+          ))}
+        </Panel>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Panel>
+            <PL>Posicionamento Estratégico</PL>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:18,fontWeight:800,color:T.sand,marginBottom:4}}>{pos.type}</div>
+              <div style={{fontSize:12,color:pos.coherent?T.green:T.orange}}>{pos.coherent?"✦ Coerente com a estrutura de preços":"⚠ Incoerência detectada no posicionamento"}</div>
+            </div>
+            <div style={{fontSize:12,color:"#A8A090",lineHeight:1.65}}>
+              Preço médio ponderado: <b style={{color:T.sand}}>{$2(pos.avgPrice)}</b>.<br/>
+              Participação premium (≥R$80): <b style={{color:T.sand}}>{pct(pos.premiumPct)}</b>.
+            </div>
+          </Panel>
+          <Panel>
+            <PL>Concentração de Receita</PL>
+            <div style={{fontSize:28,fontWeight:800,color:conc.top3Pct>55?T.orange:T.green,marginBottom:6,fontVariantNumeric:"tabular-nums"}}>{pct(conc.top3Pct)}</div>
+            <div style={{fontSize:11,color:"#A8A090",marginBottom:10}}>dos top 3 produtos no faturamento total</div>
+            {conc.top3.map((p,i)=>(
+              <div key={p.id} style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
+                <span style={{fontSize:11,color:"#AEA498"}}>{i+1}. {p.name}</span>
+                <span style={{fontSize:11,color:T.sand}}>{pct(p.revShare*100)}</span>
+              </div>
+            ))}
+          </Panel>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <Panel>
+          <PL>Destaque Positivo</PL>
+          {report.best&&(
+            <>
+              <div style={{fontSize:16,fontWeight:800,color:T.sand,marginBottom:4}}>{report.best.name}</div>
+              <Tag color={T.green}>Maior lucro líquido</Tag>
+              <div style={{marginTop:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
+                {[{l:"Receita 90d",v:$(report.best.rev90)},{l:"M.Líquida",v:pct(report.best.netMar)},{l:"Volume",v:`${report.best.qty90} un`},{l:"Saúde",v:`${calcHealthScore(report.best,fin.avgNetMar,fin.avgVol)}/100`}].map(({l,v})=>(
+                  <div key={l} style={{background:"#121008",borderRadius:7,padding:"7px 10px"}}>
+                    <div style={{fontSize:8,color:T.muted,marginBottom:2}}>{l}</div>
+                    <div style={{fontSize:12,color:T.sand,fontWeight:600}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Panel>
+        <Panel>
+          <PL>Atenção Prioritária</PL>
+          {report.worst&&(
+            <>
+              <div style={{fontSize:16,fontWeight:800,color:T.sand,marginBottom:4}}>{report.worst.name}</div>
+              <Tag color={report.worst.netMar<0?T.red:T.orange}>{report.worst.netMar<0?"Margem negativa":"Menor margem líquida"}</Tag>
+              <div style={{marginTop:10,fontSize:12,color:"#A8A090",lineHeight:1.7}}>
+                Margem líquida de <b style={{color:report.worst.netMar<0?T.red:T.orange}}>{pct(report.worst.netMar)}</b>.<br/>
+                {report.worst.netMar<0?`Este produto opera com prejuízo líquido. Aumentar preço em pelo menos ${$2(report.worst.totalCostUnit-report.worst.price)} ou retirar do cardápio.`:"Avaliar aumento de preço ou redução de custo variável."}
+              </div>
+            </>
+          )}
+        </Panel>
+      </div>
+      <Panel>
+        <PL>Análise por Categoria</PL>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+          <thead><tr style={{borderBottom:`1px solid ${T.edge}`}}>{["Categoria","Produtos","Receita 90d","M.Bruta Méd.","M.Líquida Méd.","Volume Total"].map(h=><th key={h} style={{padding:"7px 9px",textAlign:"left",fontSize:8,color:T.subtle,letterSpacing:"0.1em",fontWeight:700}}>{h}</th>)}</tr></thead>
+          <tbody>
+            {["Pizzas Tradicionais","Pizzas Especiais","Bordas Recheadas","Bebidas","Sobremesas"].map((cat,i)=>{
+              const ps=fin.products.filter(p=>p.cat===cat);if(!ps.length)return null;
+              const rev=ps.reduce((a,p)=>a+p.rev90,0),gm=ps.reduce((a,p)=>a+p.grossMar,0)/ps.length,nm=ps.reduce((a,p)=>a+p.netMar,0)/ps.length,vol=ps.reduce((a,p)=>a+p.qty90,0);
+              return(
+                <tr key={cat} style={{borderBottom:"1px solid #111",background:i%2===0?"transparent":"#0d0b09"}}>
+                  <td style={{padding:"9px 9px",color:T.sandLight,fontWeight:600}}>{cat}</td>
+                  <td style={{padding:"9px 9px",color:T.muted}}>{ps.length}</td>
+                  <td style={{padding:"9px 9px",color:T.sand}}>{$(rev)}</td>
+                  <td style={{padding:"9px 9px",color:gm>55?T.green:gm>38?T.accent:T.red,fontWeight:600}}>{pct(gm)}</td>
+                  <td style={{padding:"9px 9px",color:nm>12?T.green:nm>0?T.accent:T.red,fontWeight:700}}>{pct(nm)}</td>
+                  <td style={{padding:"9px 9px",color:"#5a5248"}}>{vol}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Panel>
+    </>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   COPILOTO
+═══════════════════════════════════════════════════════════════════════ */
+
+const buildRAG=(fin,costs)=>{
+  const safeProducts=Array.isArray(fin?.products)?fin.products:[];
+  const safeCosts=costs&&typeof costs==="object"?costs:COSTS_DEFAULT;
+  const safeFin={totalRev30:0,totalGP30:0,totalFixed:0,netProfit30:0,netMar30:0,grossMar30:0,breakeven:0,avgTicketVal:0,avgNetMar:0,avgVol:0,...fin,products:safeProducts};
+  const conc=calcConcentration(safeProducts),pos=calcPositioning(safeFin),prios=calcWeekPriorities(safeFin);
+  const enriched=safeProducts.map(p=>({...p,health:calcHealthScore(p,safeFin.avgNetMar,safeFin.avgVol)}));
+  const top5h=[...enriched].sort((a,b)=>b.health-a.health).slice(0,5);
+  const low5h=[...enriched].sort((a,b)=>a.health-b.health).slice(0,5);
+  const R=v=>{try{return`R$${_num(v).toLocaleString("pt-BR",{maximumFractionDigits:0})}`;}catch(_){return"R$0";}};
+  const P=v=>{try{return`${_num(v).toFixed(1)}%`;}catch(_){return"0.0%";}};
+  return`╔══ CONTEXTO INTERNO — PIZZARIA SUBURBANOS — 18/02/2025 ══╗\n║ Use EXCLUSIVAMENTE os números desta seção.              ║\n╚═══════════════════════════════════════════════════════════╝\n\n[FINANCEIRO — 30 dias]\nFaturamento: ${R(fin.totalRev30)}\nLucro bruto: ${R(fin.totalGP30)}\nCustos fixos: ${R(fin.totalFixed)}\nLucro líquido: ${R(fin.netProfit30)}\nMargem líquida: ${P(fin.netMar30)}\nMargem bruta: ${P(fin.grossMar30)}\nPonto de equilíbrio: ${R(fin.breakeven)}/mês\nTicket médio por item: R$${_num(fin.avgTicketVal).toFixed(2)}\n\n[CUSTOS FIXOS]\n${Object.entries(costs).map(([k,v])=>`  ${COST_LABELS[k]}: ${R(v)}`).join("\n")}\n\n[POSICIONAMENTO]\nTipo: ${pos.type} | Coerente: ${pos.coherent?"Sim":"Não"}\nPreço médio: R$${_num(pos.avgPrice).toFixed(2)}\nPremium (≥R$80): ${P(pos.premiumPct)}\n\n[CONCENTRAÇÃO]\nTop-3 = ${P(conc.top3Pct)}: ${conc.top3.map(p=>p.name).join(", ")}\n\n[TODOS OS PRODUTOS — ${safeProducts.length} itens]\n${enriched.map(p=>`${p.name} | ${p.cat} | R$${p.price} | ${P(p.grossMar)} | ${P(p.netMar)} | ${p.qty90}un | ${p.wow>=0?"+":""}${Number(p.wow).toFixed(0)}% | ${p.health}/100`).join("\n")}\n\n[TOP 5 SAÚDE]\n${top5h.map((p,i)=>`  ${i+1}. ${p.name} — ${p.health}/100`).join("\n")}\n\n[5 PIORES SAÚDE]\n${low5h.map((p,i)=>`  ${i+1}. ${p.name} — ${p.health}/100`).join("\n")}\n\n[PRIORIDADES]\n${prios.map(p=>`  [${p.level.toUpperCase()}] ${p.text}`).join("\n")}`;
+};
+
+const COPILOT_SYSTEM=`Você é o Copiloto FLAV — analista estratégico da Pizzaria Suburbanos, São Paulo.\n\n══ REGRAS INVIOLÁVEIS ══\n1. USE APENAS números do bloco CONTEXTO INTERNO. Nunca invente ou estime valores.\n2. Se um dado não constar no contexto: "Com os dados disponíveis, não é possível afirmar isso."\n3. Cite sempre os valores EXATOS do contexto.\n4. Tendências externas → prefixe com "📊 Contexto de mercado:"\n\n══ FORMATO OBRIGATÓRIO ══\n**Diagnóstico:** (1-2 frases — dado central + impacto)\n**Análise:** (evidências numéricas — máx. 4 itens)\n**Implicação estratégica:** (o que muda nas decisões)\n**Ação sugerida:** (1 ação concreta, baseada nos dados)\n\n══ TOM ══\nConsultor sênior. Direto e humano. Sem jargão. Máx. 280 palavras.`;
+
+const COPILOT_MODES={interno:{label:"Diagnóstico Interno",icon:"📁",color:T.accent,inst:"Analise com os dados internos reais da pizzaria."},simulacao:{label:"Simulação",icon:"◎",color:T.green,inst:"Simule o cenário solicitado com cenários conservador e otimista."},mercado:{label:"Mercado",icon:"📊",color:T.blue,inst:"Use contexto de tendências do mercado de pizzarias SP. Prefixe com '📊 Contexto de mercado:'"}};
+const SUGGESTIONS=[{text:"Estou lucrando pouco — por quê?",mode:"interno"},{text:"Qual pizza devo remover do cardápio?",mode:"interno"},{text:"Como melhorar minha margem líquida?",mode:"interno"},{text:"E se eu aumentar 10% o preço da Calabresa?",mode:"simulacao"},{text:"E se remover a pizza de margem negativa?",mode:"simulacao"},{text:"Tendências em pizzas especiais em SP?",mode:"mercado"}];
+
+const StructuredMessage=memo(({msg})=>{
+  const conf={alta:{c:T.green,l:"Alta"},media:{c:T.accent,l:"Média"},baixa:{c:T.red,l:"Limitada"}}[msg.confidence]||{c:T.muted,l:"—"};
+  const mc=COPILOT_MODES[msg.mode];
+  const parse=(text)=>{
+    const sections={};
+    const keys=[["diag",/\*\*Diagnóstico:?\*\*/i],["analise",/\*\*Análise:?\*\*/i],["impl",/\*\*Implicação estratégica:?\*\*/i],["acao",/\*\*Ação sugerida:?\*\*/i]];
+    keys.forEach(([k,rx],i)=>{
+      const nextRx=keys[i+1]?new RegExp(keys[i+1][1].source+"[\\s\\S]*$","i"):null;
+      const m=text.match(new RegExp(rx.source+"\\s*([\\s\\S]*?)(?="+(nextRx?"\\*\\*":"$")+")","i"));
+      if(m)sections[k]=m[1].trim();
+    });
+    return Object.keys(sections).length>=2?sections:null;
+  };
+  const parsed=msg.text?parse(msg.text):null;
+  return(
+    <div style={{display:"flex",gap:10,marginBottom:18,alignItems:"flex-start"}}>
+      <div style={{width:26,height:26,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:T.black,fontWeight:900,flexShrink:0,fontFamily:"Georgia,serif",marginTop:2}}>S</div>
+      <div style={{flex:1,maxWidth:"90%"}}>
+        {mc&&<div style={{display:"flex",gap:5,alignItems:"center",marginBottom:7}}><span style={{fontSize:10}}>{mc.icon}</span><span style={{fontSize:8,color:mc.color,fontWeight:700,letterSpacing:"0.12em"}}>{mc.label.toUpperCase()}</span></div>}
+        {parsed?(
+          <div>
+            {parsed.diag&&<div style={{fontSize:13,color:T.sandLight,lineHeight:1.65,fontWeight:500,marginBottom:10}}>{parsed.diag}</div>}
+            {parsed.analise&&<Collapse title="VER ANÁLISE DETALHADA" open><div style={{fontSize:12,color:"#A8A090",lineHeight:1.75,whiteSpace:"pre-wrap"}}>{parsed.analise}</div></Collapse>}
+            {parsed.impl&&<div style={{marginTop:10,padding:"9px 13px",background:"#0e0c08",border:`1px solid ${T.edge}`,borderRadius:7}}><div style={{fontSize:8,color:T.muted,letterSpacing:"0.1em",marginBottom:4}}>IMPLICAÇÃO</div><div style={{fontSize:12,color:"#aaa",lineHeight:1.6}}>{parsed.impl}</div></div>}
+            {parsed.acao&&<div style={{marginTop:8,padding:"9px 13px",background:T.accent+"0d",border:`1px solid ${T.accent}22`,borderRadius:7}}><div style={{fontSize:8,color:T.accent,letterSpacing:"0.1em",fontWeight:700,marginBottom:4}}>AÇÃO SUGERIDA</div><div style={{fontSize:12,color:"#bba880",lineHeight:1.6}}>{parsed.acao}</div></div>}
+            <div style={{display:"flex",alignItems:"center",gap:5,marginTop:9}}>
+              <div style={{width:5,height:5,borderRadius:"50%",background:conf.c}}/>
+              <span style={{fontSize:9,color:conf.c,fontWeight:700}}>Confiança {conf.l}</span>
+            </div>
+          </div>
+        ):(
+          <div style={{fontSize:13,color:"#b0a898",lineHeight:1.75,whiteSpace:"pre-wrap"}}>{msg.text}</div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+const Copilot=memo(()=>{
+  const{fin,costs,costAlert,updateProduct,updateCosts,updateStrategicParams,strategicParams}=useApp();
+  const[mode,setMode]=useState("interno");
+  const[input,setInput]=useState("");
+  const[loading,setLoading]=useState(false);
+  const[messages,setMessages]=useState([{role:"assistant",mode:"interno",confidence:"alta",text:"**Diagnóstico:** Copiloto ativo — dados da Pizzaria Suburbanos carregados.\n\n**Análise:** 28 produtos monitorados, 90 dias de histórico, custos fixos atualizados. Pizzas Tradicionais e Especiais, Bordas Recheadas, Bebidas e Sobremesas.\n\n**Implicação estratégica:** Posso analisar rentabilidade, cardápio, simular cenários de preço e trazer contexto do mercado de pizzarias em SP.\n\n**Ação sugerida:** Selecione o modo e faça sua pergunta."}]);
+  const abortRef=useRef(null),loadingRef=useRef(false),cooldownRef=useRef(false),bottomRef=useRef(null);
+  const finRef=useRef(fin),costsRef=useRef(costs),modeRef=useRef(mode),inputRef=useRef(input),msgsRef=useRef(messages);
+  useEffect(()=>{finRef.current=fin;},[fin]);useEffect(()=>{costsRef.current=costs;},[costs]);
+  useEffect(()=>{modeRef.current=mode;},[mode]);useEffect(()=>{inputRef.current=input;},[input]);
+  useEffect(()=>{msgsRef.current=messages;},[messages]);
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[messages,loading]);
+  const[apiStatus,setApiStatus]=useState("ok");
+  const apiStatusRef=useRef("ok");
+  const cbRef=useRef({state:"closed",failures:0,openUntil:0});
+  const _localFallback=useCallback(()=>{
+    const f=finRef.current||{};const nm=f.netMar30||0,rev=f.totalRev30||0,profit=f.netProfit30||0;
+    const keyProds=(f.products||[]).slice().sort((a,b)=>(b.netProfit90||0)-(a.netProfit90||0)).slice(0,3).map(p=>p.name).join(", ");
+    const criticals=(f.products||[]).filter(p=>(p.netMar||0)<0).map(p=>p.name).join(", ")||"nenhum";
+    return`**Diagnóstico:** Análise local — Pizzaria Suburbanos (modo offline).\n\n**Análise:**\n• Margem líquida: **${pct(nm)}** (${nm>12?"saudável":nm>5?"atenção":"crítico"})\n• Faturamento 30d: **${$(rev)}**\n• Lucro líquido: **${$(profit)}**\n• Mais rentáveis: ${keyProds}\n• Margem negativa: ${criticals}\n\n**Implicação estratégica:** ${nm<8?"Margem abaixo de 8%. Revisar precificação urgente.":nm<12?"Atenção: margem em zona de risco.":"Operação saudável. Otimize produtos de baixo giro."}\n\n**Ação sugerida:** Reconecte para análise completa com IA.`;
+  },[]);
+  const _callAPI=useCallback(async(sysPrompt,hist,msgText,signal)=>{
+    const MAX_RETRIES=3,RETRY_DELAYS=[1500,4000,10000];
+    const cb=cbRef.current;
+    if(cb.state==="open"){const remaining=cb.openUntil-Date.now();if(remaining>0)throw new Error("circuit_open");cb.state="half-open";}
+    for(let attempt=0;attempt<=MAX_RETRIES;attempt++){
+      if(signal.aborted)throw new DOMException("Aborted","AbortError");
+      if(attempt>0){await new Promise(res=>setTimeout(res,RETRY_DELAYS[Math.min(attempt-1,RETRY_DELAYS.length-1)]));if(signal.aborted)throw new DOMException("Aborted","AbortError");}
+      try{
+        const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",signal,headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:800,system:sysPrompt.slice(0,6000),messages:[...hist,{role:"user",content:msgText.slice(0,1500)}]})});
+        if(resp.status===429){cbRef.current.failures++;if(cbRef.current.failures>=3){cbRef.current.state="open";cbRef.current.openUntil=Date.now()+45000;cbRef.current.failures=0;apiStatusRef.current="degraded";setApiStatus("degraded");}if(attempt<MAX_RETRIES){await new Promise(res=>setTimeout(res,RETRY_DELAYS[Math.min(attempt,RETRY_DELAYS.length-1)]));continue;}throw new Error("api_http_429");}
+        if(resp.status>=500&&attempt<MAX_RETRIES){cbRef.current.failures++;continue;}
+        if(!resp.ok)throw new Error("api_http_"+resp.status);
+        let data=null;try{data=await resp.json();}catch(_){throw new Error("api_parse");}
+        const txt=(Array.isArray(data?.content)?data.content:[]).filter(b=>b?.type==="text"&&typeof b.text==="string").map(b=>b.text).join("").trim();
+        if(!txt)throw new Error("api_empty");
+        cbRef.current={state:"closed",failures:0,openUntil:0};
+        if(apiStatusRef.current!=="ok"){apiStatusRef.current="ok";setApiStatus("ok");}
+        return txt;
+      }catch(innerErr){if(innerErr?.name==="AbortError")throw innerErr;if(attempt===MAX_RETRIES)throw innerErr;}
+    }
+    throw new Error("api_max_retries");
+  },[]);
+  const send=useCallback(async(textOverride,modeOverride)=>{
+    const raw=(textOverride!=null?textOverride:inputRef.current)||"";
+    const msgText=raw.replace(/<[^>]*>/g,"").trim().slice(0,2000);
+    const msgMode=modeOverride||modeRef.current||"interno";
+    if(!msgText||loadingRef.current||cooldownRef.current)return;
+    cooldownRef.current=true;setTimeout(()=>{cooldownRef.current=false;},900);
+    if(abortRef.current){try{abortRef.current.abort();}catch(_){}}
+    const controller=new AbortController();abortRef.current=controller;
+    setInput("");setMessages(prev=>[...prev,{role:"user",text:msgText}]);setLoading(true);loadingRef.current=true;
+    let hist=[];
+    try{hist=(msgsRef.current||[]).slice(-8).filter(m=>(m.role==="user"||m.role==="assistant")&&typeof m.text==="string"&&m.text.length>0).map(m=>({role:m.role,content:m.text.slice(0,1200)}));}catch(_){hist=[];}
+    let rag="";try{rag=buildRAG(finRef.current,costsRef.current);}catch(_){rag="[Contexto parcialmente indisponível]";}
+    const mc=COPILOT_MODES[msgMode]??COPILOT_MODES.interno;
+    const sysPrompt=`${COPILOT_SYSTEM}\n\n══ MODO: ${mc.label} ══\n${mc.inst}\n\n${rag}`;
+    const globalTimeout=setTimeout(()=>{try{controller.abort();}catch(_){}},60000);
+    try{
+      const txt=await _callAPI(sysPrompt,hist,msgText,controller.signal);
+      clearTimeout(globalTimeout);
+      const conf=(txt.includes("não é possível afirmar")||txt.includes("dados insuficientes"))?"baixa":msgMode==="mercado"?"media":"alta";
+      setMessages(prev=>[...prev,{role:"assistant",mode:msgMode,confidence:conf,text:txt}]);
+    }catch(err){
+      clearTimeout(globalTimeout);
+      if(err?.name==="AbortError"){setLoading(false);loadingRef.current=false;return;}
+      const isOffline=err?.message==="api_max_retries"||(err?.name==="TypeError"&&err?.message?.includes("fetch"));
+      const is429=err?.message==="api_http_429",isCBOpen=err?.message==="circuit_open";
+      if(isOffline||is429||isCBOpen){
+        const localTxt=_localFallback();
+        setMessages(prev=>[...prev,{role:"assistant",mode:msgMode,confidence:"media",text:localTxt,_local:true}]);
+      }else{
+        setMessages(prev=>[...prev,{role:"assistant",mode:msgMode,confidence:"baixa",_error:true,text:`**Diagnóstico:** Falha temporária no serviço de IA (${err?.message||"desconhecido"}).\n\n**Ação sugerida:** Tente novamente em 30 segundos.`}]);
+      }
+    }
+    setLoading(false);loadingRef.current=false;
+  },[_callAPI,_localFallback]);
+
+  return(
+    <>
+      <SH eyebrow="Inteligência Estratégica com IA" title="Copiloto Suburbanos"/>
+      <div style={{display:"flex",gap:6,marginBottom:18,paddingBottom:14,borderBottom:T.border}}>
+        {Object.entries(COPILOT_MODES).map(([k,{label,icon,color}])=>(
+          <button key={k} onClick={()=>setMode(k)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 15px",borderRadius:8,border:`1px solid ${mode===k?color+"44":T.edge}`,background:mode===k?color+"0d":"transparent",color:mode===k?color:T.muted,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            <span>{icon}</span><span>{label}</span>
+          </button>
+        ))}
+        <div style={{flex:1}}/>
+        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9,color:T.muted}}>
+          <div style={{width:5,height:5,borderRadius:"50%",background:apiStatus==="ok"?T.green:apiStatus==="degraded"?T.orange:T.red}}/>
+          <span>{apiStatus==="ok"?"28 produtos · 12 meses · IA ativa":apiStatus==="degraded"?"IA com latência":""}</span>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 250px",gap:16,alignItems:"start"}}>
+        <div>
+          <div style={{minHeight:420,maxHeight:520,overflowY:"auto",marginBottom:12,paddingRight:4}}>
+            {messages.map((msg,i)=>(
+              msg.role==="user"?(
+                <div key={i} style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+                  <div style={{maxWidth:"72%",padding:"9px 14px",fontSize:12,lineHeight:1.6,borderRadius:"11px 11px 3px 11px",background:"#161208",border:T.border,color:"#8a8078"}}>{msg.text}</div>
+                </div>
+              ):(
+                <div key={i}>
+                  <StructuredMessage msg={msg}/>
+                  {msg._local&&<div style={{display:"flex",alignItems:"center",gap:5,marginBottom:10,marginLeft:36,marginTop:-6}}><span style={{fontSize:8,color:T.orange,letterSpacing:"0.1em"}}>⚡ ANÁLISE LOCAL · IA offline</span></div>}
+                </div>
+              )
+            ))}
+            {loading&&(
+              <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:T.black,fontWeight:900,fontFamily:"Georgia,serif",flexShrink:0}}>S</div>
+                <div style={{display:"flex",gap:4}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:T.muted,animation:"copDot 1.2s infinite",animationDelay:`${i*0.22}s`}}/>)}</div>
+                <style>{`@keyframes copDot{0%,100%{opacity:.2}50%{opacity:.9}}`}</style>
+              </div>
+            )}
+            <div ref={bottomRef}/>
+          </div>
+          <div style={{display:"flex",gap:8,background:T.panel,border:T.border,borderRadius:11,padding:"3px 3px 3px 15px",alignItems:"center"}}>
+            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder={`${COPILOT_MODES[mode].label} — ex: "qual pizza tem melhor margem?"…`} disabled={loading} style={{flex:1,background:"transparent",border:"none",fontSize:12,color:T.sand,outline:"none",fontFamily:"inherit",padding:"9px 0",opacity:loading?0.5:1}}/>
+            <button onClick={()=>send()} disabled={loading||!input.trim()} style={{background:loading||!input.trim()?"#1c1812":T.sand,color:loading||!input.trim()?T.muted:T.black,border:"none",borderRadius:8,padding:"8px 18px",fontSize:11,fontWeight:800,cursor:loading||!input.trim()?"not-allowed":"pointer",fontFamily:"inherit",flexShrink:0}}>
+              {loading?"…":"Enviar"}
+            </button>
+          </div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <Panel>
+            <PL>Perguntas Rápidas</PL>
+            {SUGGESTIONS.map((s,i)=>(
+              <button key={i} onClick={()=>{if(!loading){setMode(s.mode);send(s.text,s.mode);}}} disabled={loading}
+                style={{display:"flex",gap:7,padding:"7px 9px",borderRadius:7,background:"#0d0b09",border:T.border,cursor:loading?"not-allowed":"pointer",fontFamily:"inherit",textAlign:"left",width:"100%",marginBottom:6,alignItems:"flex-start",opacity:loading?0.45:1}}>
+                <span style={{fontSize:9,color:T.muted,flexShrink:0,marginTop:1}}>{COPILOT_MODES[s.mode].icon}</span>
+                <span style={{fontSize:10,color:"#807870",lineHeight:1.45}}>{s.text}</span>
+              </button>
+            ))}
+          </Panel>
+          <Panel>
+            <PL>Status do Restaurante</PL>
+            {[{l:"Margem líquida",v:pct(fin.netMar30),c:fin.netMar30>12?T.green:fin.netMar30>5?T.accent:T.red},{l:"Lucro líquido",v:$(fin.netProfit30),c:fin.netProfit30>0?T.green:T.red},{l:"Custos fixos",v:$(fin.totalFixed)},{l:"Alertas críticos",v:String(fin.products.filter(p=>p.netMar<0).length+(fin.netMar30<8?1:0)),c:fin.products.filter(p=>p.netMar<0).length>0?T.red:T.green},{l:"Produtos",v:String(fin.products.length),c:T.sand}].map(({l,v,c})=>(
+              <div key={l} style={{display:"flex",justifyContent:"space-between",marginBottom:7,fontSize:11}}>
+                <span style={{color:T.muted}}>{l}</span>
+                <span style={{color:c||T.sand,fontWeight:600,fontVariantNumeric:"tabular-nums"}}>{v}</span>
+              </div>
+            ))}
+          </Panel>
+          <Panel>
+            <PL>Confiança</PL>
+            {[{l:"Alta",c:T.green,d:"dados internos reais"},{l:"Média",c:T.accent,d:"estimativa / mercado"},{l:"Limitada",c:T.red,d:"dados insuficientes"}].map(({l,c,d})=>(
+              <div key={l} style={{display:"flex",alignItems:"center",gap:7,marginBottom:7,fontSize:11}}>
+                <div style={{width:6,height:6,borderRadius:"50%",background:c,flexShrink:0}}/>
+                <span style={{color:c,fontWeight:700}}>{l}</span>
+                <span style={{color:"#383430"}}>— {d}</span>
+              </div>
+            ))}
+          </Panel>
+        </div>
+      </div>
+    </>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SETTINGS
+═══════════════════════════════════════════════════════════════════════ */
+
+const Settings=memo(()=>{
+  const{productOverrides,productHistory,resetProduct,clearAll,updateProduct}=useApp();
+  const{fin}=useApp();
+  const[form,setForm]=useState({name:"Pizzaria Suburbanos",owner:"Roberto Almeida",email:"contato@pizzariasuburbanos.com.br",city:"São Paulo",segment:"Pizzaria Artesanal / Italiana",positioning:"Volume"});
+  const[saved,setSaved]=useState(false);
+  const[resetConfirm,setResetConfirm]=useState(false);
+  const f=(k,v)=>{setForm(p=>({...p,[k]:v}));setSaved(false);};
+  const totalEdited=Object.keys(productOverrides||{}).length;
+  const handleReset=()=>{if(!resetConfirm){setResetConfirm(true);return;}clearAll();setResetConfirm(false);};
+  return(
+    <>
+      <SH eyebrow="Conta & Preferências" title="Configurações"/>
+      <div style={{maxWidth:500}}>
+        <Panel>
+          <PL>Perfil da Pizzaria</PL>
+          {[{l:"Nome",k:"name"},{l:"Proprietário",k:"owner"},{l:"E-mail",k:"email"},{l:"Cidade",k:"city"},{l:"Segmento",k:"segment"}].map(({l,k})=>(
+            <div key={k} style={{marginBottom:11}}>
+              <label style={{fontSize:9,color:T.muted,letterSpacing:"0.12em",display:"block",marginBottom:4}}>{l}</label>
+              <input value={form[k]} onChange={e=>f(k,e.target.value)} style={{width:"100%",background:"#121008",border:T.border,borderRadius:7,padding:"8px 12px",fontSize:12,color:T.sand,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+          ))}
+          <div style={{marginBottom:11}}>
+            <label style={{fontSize:9,color:T.muted,letterSpacing:"0.12em",display:"block",marginBottom:4}}>Posicionamento</label>
+            <select value={form.positioning} onChange={e=>f("positioning",e.target.value)} style={{width:"100%",background:"#121008",border:T.border,borderRadius:7,padding:"8px 12px",fontSize:12,color:T.sand,outline:"none",fontFamily:"inherit"}}>
+              {["Premium","Equilíbrio","Volume"].map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <button onClick={()=>setSaved(true)} style={{background:saved?T.green:T.sand,color:T.black,border:"none",borderRadius:8,padding:"10px 0",width:"100%",fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>{saved?"✓ Salvo":"Salvar"}</button>
+        </Panel>
+        <Panel style={{marginTop:11}}>
+          <PL>Sistema</PL>
+          <div style={{fontSize:12,color:T.sandMid}}>FLAV v1.0 · Pizzaria Suburbanos · localStorage ativo</div>
+          <div style={{marginTop:14}}>
+            <div style={{fontSize:9,color:T.muted,letterSpacing:"0.12em",marginBottom:8}}>RESET DO SISTEMA</div>
+            {!resetConfirm?(
+              <button onClick={handleReset} style={{background:"transparent",border:`1px solid ${T.edge}`,borderRadius:8,padding:"9px 16px",fontSize:11,color:T.muted,cursor:"pointer",fontFamily:"inherit",width:"100%"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.red+"55";e.currentTarget.style.color=T.red;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.edge;e.currentTarget.style.color=T.muted;}}>Restaurar Estado Padrão</button>
+            ):(
+              <div style={{background:T.red+"0d",border:`1px solid ${T.red}33`,borderRadius:8,padding:"12px 14px"}}>
+                <div style={{fontSize:10,color:T.red,fontWeight:700,marginBottom:6}}>⚠ ATENÇÃO — IRREVERSÍVEL</div>
+                <div style={{fontSize:11,color:"#9A8080",lineHeight:1.6,marginBottom:12}}>Todos os preços editados, custos e histórico serão apagados.</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <button onClick={handleReset} style={{background:T.red+"22",border:`1px solid ${T.red}55`,borderRadius:7,padding:"8px 0",fontSize:11,fontWeight:800,color:T.red,cursor:"pointer",fontFamily:"inherit"}}>✓ Confirmar Reset</button>
+                  <button onClick={()=>setResetConfirm(false)} style={{background:"transparent",border:`1px solid ${T.edge}`,borderRadius:7,padding:"8px 0",fontSize:11,color:T.muted,cursor:"pointer",fontFamily:"inherit"}}>✕ Cancelar</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </Panel>
+        {totalEdited>0&&(
+          <Panel style={{marginTop:11,border:`1px solid ${T.accent}22`}}>
+            <PL>Produtos Editados Ativos</PL>
+            <div style={{fontSize:11,color:"#7a7060",marginBottom:12}}><b style={{color:T.sand}}>{totalEdited}</b> produto(s) com alteração ativa.</div>
+            {Object.entries(productOverrides).map(([pid,ov])=>{
+              const pidNum=parseInt(pid),raw=RAW_PRODUCTS.find(p=>p.id===pidNum),name=ov._custom?ov.name:raw?.name;
+              if(!name)return null;
+              return(
+                <div key={pid} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${T.edge}`}}>
+                  <div>
+                    <span style={{fontSize:11,color:T.sand}}>{name}</span>
+                    <div style={{fontSize:9,color:T.muted,marginTop:1}}>
+                      {ov.price!==undefined&&<span>Preço: {$2(raw?.price||0)} → <b style={{color:T.accent}}>{$2(ov.price)}</b>  </span>}
+                      {ov.vc!==undefined&&<span>C.Var: {$2(raw?.vc||0)} → <b style={{color:T.blue}}>{$2(ov.vc)}</b></span>}
+                    </div>
+                  </div>
+                  <button onClick={()=>resetProduct(pidNum)} style={{background:"none",border:`1px solid ${T.edge}`,cursor:"pointer",color:T.muted,fontSize:9,padding:"4px 10px",borderRadius:6,fontFamily:"inherit"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.red+"66";e.currentTarget.style.color=T.red;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.edge;e.currentTarget.style.color=T.muted;}}>↺ Reset</button>
+                </div>
+              );
+            })}
+          </Panel>
+        )}
+      </div>
+    </>
+  );
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ROOT
+═══════════════════════════════════════════════════════════════════════ */
+
+const NAV=[
+  {id:"dashboard",icon:"▤",label:"Dashboard"},
+  {id:"alerts",icon:"⚡",label:"Avisos Inteligentes"},
+  {id:"menu",icon:"◈",label:"Análise de Cardápio"},
+  {id:"simulation",icon:"◎",label:"Simulador Estratégico"},
+  {id:"costs",icon:"◻",label:"Estrutura de Custos"},
+  {id:"report",icon:"▦",label:"Relatório Mensal"},
+  {id:"copilot",icon:"✦",label:"Copiloto"},
+  {id:"settings",icon:"⚙",label:"Configurações"},
+];
+
+function AppRoot(){
+  const{fin}=useApp();
+  const[tab,setTab]=useState("dashboard");
+  const[period,setPeriod]=useState("90");
+  const[collapsed,setCollapsed]=useState(false);
+  const critCount=useMemo(()=>fin.products.filter(p=>p.netMar<0).length+(fin.netMar30<8?1:0),[fin]);
+  return(
+    <div style={{display:"flex",minHeight:"100vh",background:T.bg,fontFamily:"'Trebuchet MS','Segoe UI',system-ui,sans-serif"}}>
+      <CostToast/><UpdateToast/>
+      <aside style={{width:collapsed?58:228,background:"#0E0A08",borderRight:T.border,display:"flex",flexDirection:"column",flexShrink:0,transition:"width 0.2s ease",position:"sticky",top:0,height:"100vh",overflow:"hidden"}}>
+        <div style={{padding:"19px 13px 15px",borderBottom:T.border,display:"flex",alignItems:"center",gap:10,justifyContent:collapsed?"center":"flex-start"}}>
+          <div style={{width:28,height:28,borderRadius:7,background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:T.black,flexShrink:0,fontFamily:"Georgia,serif"}}>S</div>
+          {!collapsed&&<div><div style={{fontSize:13,fontWeight:900,color:T.sand,letterSpacing:"-0.04em",fontFamily:"Georgia,serif"}}>SUBURBANOS</div><div style={{fontSize:7,color:T.muted,letterSpacing:"0.16em"}}>INTELIGÊNCIA</div></div>}
+        </div>
+        <nav style={{flex:1,padding:"7px 5px",display:"flex",flexDirection:"column",gap:2}}>
+          {NAV.map(({id,icon,label})=>{
+            const active=tab===id,badge=id==="alerts"&&critCount>0;
+            return(
+              <button key={id} onClick={()=>setTab(id)} title={label} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",background:active?T.accent+"1a":"transparent",color:active?T.sandLight:T.muted,transition:"all 0.12s",justifyContent:collapsed?"center":"flex-start",position:"relative"}}>
+                <span style={{fontSize:13,flexShrink:0,color:active?T.accent:"#464440"}}>{icon}</span>
+                {!collapsed&&<span style={{fontSize:11,fontWeight:active?700:400,whiteSpace:"nowrap"}}>{label}</span>}
+                {badge&&<span style={{position:"absolute",top:6,right:collapsed?6:8,width:6,height:6,borderRadius:"50%",background:T.red}}/>}
+                {active&&!collapsed&&<div style={{position:"absolute",right:0,top:"50%",transform:"translateY(-50%)",width:2,height:13,background:T.accent,borderRadius:1}}/>}
+              </button>
+            );
+          })}
+        </nav>
+        <div style={{padding:"7px 5px",borderTop:T.border}}>
+          <button onClick={()=>setCollapsed(c=>!c)} style={{width:"100%",padding:"7px",borderRadius:7,border:"none",background:"transparent",cursor:"pointer",color:T.subtle,fontSize:11,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:collapsed?"center":"flex-start",gap:5}}>
+            <span style={{fontSize:11}}>{collapsed?"→":"←"}</span>
+            {!collapsed&&<span style={{fontSize:9,letterSpacing:"0.08em"}}>Recolher</span>}
+          </button>
+        </div>
+      </aside>
+      <main style={{flex:1,overflowY:"auto",padding:"34px 38px",minWidth:0}}>
+        {tab==="dashboard"&&<Dashboard period={period} setPeriod={setPeriod}/>}
+        {tab==="alerts"&&<Alerts/>}
+        {tab==="menu"&&<MenuAnalysis/>}
+        {tab==="simulation"&&<Simulation/>}
+        {tab==="costs"&&<Costs/>}
+        {tab==="report"&&<MonthlyReport/>}
+        {tab==="copilot"&&<Copilot/>}
+        {tab==="settings"&&<Settings/>}
+      </main>
+    </div>
+  );
+}
+
+function SuburbanosApp() {
+  return (
+    <AppProvider>
+      <AppRoot />
+    </AppProvider>
+  );
+}
+
+export default SuburbanosApp;
