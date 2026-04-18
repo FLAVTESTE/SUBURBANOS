@@ -1,12 +1,43 @@
-import { useState, useMemo, useRef, useEffect, createContext, useContext, useCallback, memo } from "react";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pizzaria Suburbanos — Inteligência Estratégica</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.8.0/Recharts.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body { background: #0C0A09; color: #F0D8B0; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type=number] { -moz-appearance: textfield; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0C0A09; }
+    ::-webkit-scrollbar-thumb { background: #2A2420; border-radius: 3px; }
+    select option { background: #151210; color: #F0D8B0; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {
+  useState, useMemo, useRef, useEffect,
+  createContext, useContext, useCallback, memo
+} = React;
+
+const {
+  AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} = Recharts;
 
 /* ═══════════════════════════════════════
-   DATA LAYER — Pizzaria Suburbanos
+   DATA LAYER
 ═══════════════════════════════════════ */
-
 const RAW_PRODUCTS = [
-  // PIZZAS TRADICIONAIS
   { id:1,  name:"Margherita",            cat:"Pizzas Tradicionais", price:52,  vc:28, baseVol:5, role:"Volume",      rating:4.6, nRat:312 },
   { id:2,  name:"Calabresa",             cat:"Pizzas Tradicionais", price:58,  vc:30, baseVol:7, role:"Carro-chefe", rating:4.8, nRat:489 },
   { id:3,  name:"Portuguesa",            cat:"Pizzas Tradicionais", price:62,  vc:34, baseVol:4, role:"Volume",      rating:4.5, nRat:274 },
@@ -15,7 +46,6 @@ const RAW_PRODUCTS = [
   { id:6,  name:"Pepperoni",             cat:"Pizzas Tradicionais", price:72,  vc:42, baseVol:3, role:"Volume",      rating:4.7, nRat:218 },
   { id:7,  name:"Mussarela",             cat:"Pizzas Tradicionais", price:48,  vc:24, baseVol:4, role:"Volume",      rating:4.3, nRat:198 },
   { id:8,  name:"Napolitana",            cat:"Pizzas Tradicionais", price:56,  vc:30, baseVol:2, role:"Sazonal",     rating:4.2, nRat:87  },
-  // PIZZAS ESPECIAIS
   { id:9,  name:"Suburbanos Especial",   cat:"Pizzas Especiais",    price:92,  vc:48, baseVol:3, role:"Carro-chefe", rating:4.9, nRat:267 },
   { id:10, name:"Trufada de Cogumelos",  cat:"Pizzas Especiais",    price:98,  vc:62, baseVol:1, role:"Premium",     rating:4.8, nRat:94  },
   { id:11, name:"Camarão ao Alho",       cat:"Pizzas Especiais",    price:105, vc:58, baseVol:1, role:"Premium",     rating:4.9, nRat:71  },
@@ -23,25 +53,21 @@ const RAW_PRODUCTS = [
   { id:13, name:"Carne Seca c/ Abóbora", cat:"Pizzas Especiais",   price:82,  vc:44, baseVol:2, role:"Diferencial", rating:4.7, nRat:148 },
   { id:14, name:"Frango Defumado",       cat:"Pizzas Especiais",    price:78,  vc:42, baseVol:2, role:"Diferencial", rating:4.6, nRat:133 },
   { id:15, name:"Veggie Supreme",        cat:"Pizzas Especiais",    price:75,  vc:72, baseVol:1, role:"Diferencial", rating:3.7, nRat:29  },
-  // BORDAS RECHEADAS
   { id:16, name:"Borda Catupiry",        cat:"Bordas Recheadas",    price:12,  vc:4,  baseVol:8, role:"Complemento", rating:4.8, nRat:520 },
   { id:17, name:"Borda Cheddar",         cat:"Bordas Recheadas",    price:12,  vc:4,  baseVol:5, role:"Complemento", rating:4.6, nRat:310 },
   { id:18, name:"Borda Chocolate",       cat:"Bordas Recheadas",    price:14,  vc:5,  baseVol:2, role:"Complemento", rating:4.4, nRat:178 },
-  // BEBIDAS
   { id:19, name:"Refrigerante Lata",     cat:"Bebidas",             price:8,   vc:3,  baseVol:14, role:"Volume",     rating:4.0, nRat:210 },
   { id:20, name:"Cerveja Long Neck",     cat:"Bebidas",             price:14,  vc:5,  baseVol:8,  role:"Volume",     rating:4.5, nRat:312 },
   { id:21, name:"Suco Natural",          cat:"Bebidas",             price:12,  vc:4,  baseVol:4,  role:"Volume",     rating:4.6, nRat:180 },
   { id:22, name:"Água Mineral",          cat:"Bebidas",             price:6,   vc:2,  baseVol:10, role:"Volume",     rating:4.1, nRat:95  },
   { id:23, name:"Vinho da Casa (taça)",  cat:"Bebidas",             price:24,  vc:8,  baseVol:3,  role:"Premium",    rating:4.4, nRat:132 },
   { id:24, name:"Coca-Cola 600ml",       cat:"Bebidas",             price:10,  vc:4,  baseVol:10, role:"Volume",     rating:4.2, nRat:178 },
-  // SOBREMESAS
   { id:25, name:"Pizza de Nutella",      cat:"Sobremesas",          price:42,  vc:14, baseVol:3, role:"Volume",      rating:4.9, nRat:289 },
   { id:26, name:"Pizza de Morango",      cat:"Sobremesas",          price:42,  vc:15, baseVol:2, role:"Volume",      rating:4.8, nRat:201 },
   { id:27, name:"Petit Gâteau",          cat:"Sobremesas",          price:28,  vc:9,  baseVol:2, role:"Complemento", rating:4.7, nRat:156 },
   { id:28, name:"Sorvete 2 bolas",       cat:"Sobremesas",          price:16,  vc:5,  baseVol:2, role:"Complemento", rating:4.5, nRat:122 },
 ];
 
-// Gera 365 dias de vendas deterministicamente
 const generateSales = () => {
   const REF = new Date("2025-02-18");
   const DAYS = 365;
@@ -85,7 +111,6 @@ const buildProductMetrics = () => {
   const WOW_P7S = "2025-02-05";
   const WOW_P7E = "2025-02-12";
   const LAST14 = "2025-02-05";
-
   const metrics = RAW_PRODUCTS.map(p => {
     const rows = ALL_SALES.filter(s => s.pid === p.id);
     const rows90 = rows.filter(s => s.date >= LAST90);
@@ -102,7 +127,6 @@ const buildProductMetrics = () => {
       ? Math.sqrt(last14rows.reduce((a, s) => a + Math.pow(s.qty - avgDay, 2), 0) / 14) : 0;
     return { ...p, qty90, rev90, gp90, grossMar, wow, avgDailyQty: avgDay, stdDev, l7, p7 };
   });
-
   const totalRev90 = metrics.reduce((a, p) => a + p.rev90, 0);
   return metrics.map(p => ({ ...p, revShare: totalRev90 > 0 ? p.rev90 / totalRev90 : 0, totalRev90 }));
 };
@@ -125,31 +149,19 @@ const buildDailyAgg = () => {
 const DAILY_AGG = buildDailyAgg();
 
 const COSTS_DEFAULT = {
-  aluguel: 5800,
-  energia: 2200,
-  agua: 480,
-  gas: 1600,
-  folha: 12500,
-  taxas: 1900,
-  marketing: 800,
-  outros: 1200,
+  aluguel: 5800, energia: 2200, agua: 480, gas: 1600,
+  folha: 12500, taxas: 1900, marketing: 800, outros: 1200,
 };
 
 const COST_LABELS = {
-  aluguel: "Aluguel",
-  energia: "Energia Elétrica",
-  agua: "Água",
-  gas: "Gás / Lenha",
-  folha: "Folha de Pagamento",
-  taxas: "Taxas & Impostos",
-  marketing: "Marketing / iFood",
-  outros: "Outros",
+  aluguel: "Aluguel", energia: "Energia Elétrica", agua: "Água",
+  gas: "Gás / Lenha", folha: "Folha de Pagamento", taxas: "Taxas & Impostos",
+  marketing: "Marketing / iFood", outros: "Outros",
 };
 
 /* ═══════════════════════════════════════
    SERVICES
 ═══════════════════════════════════════ */
-
 const calcDailyAgg = (overrides = {}) => {
   if (!overrides || Object.keys(overrides).length === 0) return DAILY_AGG;
   const m = {};
@@ -192,8 +204,7 @@ const calcProductMetrics = (overrides = {}) => {
       const { name, cat, price, vc, role, rating = 4.5, nRat = 0 } = ov;
       const catProds = PRODUCT_METRICS.filter(p => p.cat === cat);
       const avgCatQty = catProds.length > 0
-        ? catProds.reduce((a, p) => a + p.qty90, 0) / catProds.length * 0.6
-        : 20;
+        ? catProds.reduce((a, p) => a + p.qty90, 0) / catProds.length * 0.6 : 20;
       const qty90 = Math.round(avgCatQty);
       const rev90 = qty90 * price;
       const gp90 = qty90 * (price - vc);
@@ -225,7 +236,6 @@ const calcFinancials = (costs, overrides = {}) => {
   const breakeven = totalGP30 > 0 ? (totalFixed / totalGP30) * totalRev30 : 0;
   const ordersTotal = slice30.reduce((a, d) => a + d.orders, 0);
   const avgTicketVal = ordersTotal > 0 ? totalRev30 / ordersTotal : 0;
-
   const products = prodMets.map(p => {
     const fixedAlloc90 = totalFixed * 3 * p.revShare;
     const fixedPerUnit = p.qty90 > 0 ? fixedAlloc90 / p.qty90 : 0;
@@ -234,11 +244,9 @@ const calcFinancials = (costs, overrides = {}) => {
     const netMar = p.price > 0 ? (netMarUnit / p.price) * 100 : 0;
     return { ...p, fixedPerUnit, totalCostUnit, netMar, netProfit90: p.qty90 * netMarUnit };
   });
-
   const avgNetMar = products.reduce((a, p) => a + p.netMar, 0) / products.length;
   const avgGrossMar = products.reduce((a, p) => a + p.grossMar, 0) / products.length;
   const avgVol = products.reduce((a, p) => a + p.qty90, 0) / products.length;
-
   return {
     totalFixed, totalRev30, totalGP30, netProfit30, netMar30,
     grossMar30, breakeven, avgTicketVal, products,
@@ -282,29 +290,23 @@ const calcPositioning = (fin) => {
   const avgPrice = PRODUCT_METRICS.reduce((a, p) => a + p.price * p.revShare, 0);
   const premiumPct = fin.products.filter(p => p.price >= 80).reduce((a, p) => a + p.revShare, 0) * 100;
   const type = premiumPct > 50 ? "Premium" : premiumPct > 20 ? "Equilíbrio" : "Volume";
-  const coherent = true;
-  return { avgPrice, premiumPct, type, coherent };
+  return { avgPrice, premiumPct, type, coherent: true };
 };
 
 const calcWeekPriorities = (fin) => {
   const priorities = [];
+  const priColors = { critical: "#D45050", warning: "#D08040", success: "#58B868", info: "#5090C8" };
   const neg = fin.products.filter(p => p.netMar < 0);
-  if (neg.length > 0) {
-    priorities.push({ icon: "⚠", level: "critical", text: `${neg.map(p => p.name).join(", ")} operam com margem líquida negativa.` });
-  }
+  if (neg.length > 0) priorities.push({ icon: "⚠", level: "critical", text: `${neg.map(p => p.name).join(", ")} operam com margem líquida negativa.` });
   detectAnomalies(fin.products).filter(a => a.type === "queda").slice(0, 2).forEach(a => {
     priorities.push({ icon: "▼", level: "warning", text: `${a.name} caiu ${Math.abs(a.wow).toFixed(0)}% esta semana.` });
   });
   const { top3Pct, top3 } = calcConcentration(fin.products);
-  if (top3Pct > 55) {
-    priorities.push({ icon: "◎", level: "info", text: `${top3Pct.toFixed(0)}% da receita em ${top3.map(p => p.name).join(", ")}.` });
-  }
+  if (top3Pct > 55) priorities.push({ icon: "◎", level: "info", text: `${top3Pct.toFixed(0)}% da receita em ${top3.map(p => p.name).join(", ")}.` });
   detectAnomalies(fin.products).filter(a => a.type === "crescimento").slice(0, 1).forEach(a => {
     priorities.push({ icon: "▲", level: "success", text: `${a.name} cresceu ${a.wow.toFixed(0)}% na semana.` });
   });
-  if (fin.netMar30 < 8) {
-    priorities.push({ icon: "⚠", level: "critical", text: `Margem líquida em ${fin.netMar30.toFixed(1)}% — abaixo do mínimo de 8%.` });
-  }
+  if (fin.netMar30 < 8) priorities.push({ icon: "⚠", level: "critical", text: `Margem líquida em ${fin.netMar30.toFixed(1)}% — abaixo do mínimo de 8%.` });
   return priorities.slice(0, 6);
 };
 
@@ -347,45 +349,22 @@ const simulatePrice = (product, newPrice, fin) => {
 /* ═══════════════════════════════════════
    PERSISTENCE
 ═══════════════════════════════════════ */
-
 const STORAGE_KEY = "SUBURBANOS_v1";
 const STRATEGIC_PARAMS_DEFAULT = { minMargin: 8, targetMargin: 18, targetOpProfit: 12000, targetTicket: 35, maxCostPct: 55, alertSensitivity: "normal" };
 
-const persistState = (state) => {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, ...state })); } catch (_) {}
-};
-const loadPersistedState = () => {
-  try {
-    const r = localStorage.getItem(STORAGE_KEY);
-    if (!r) return null;
-    const p = JSON.parse(r);
-    return p?._v === 1 ? p : null;
-  } catch { return null; }
-};
+const persistState = (state) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ _v: 1, ...state })); } catch (_) {} };
+const loadPersistedState = () => { try { const r = localStorage.getItem(STORAGE_KEY); if (!r) return null; const p = JSON.parse(r); return p?._v === 1 ? p : null; } catch { return null; } };
 const clearPersistedState = () => { try { localStorage.removeItem(STORAGE_KEY); } catch (_) {} };
 
 const getInitialState = () => {
   const saved = loadPersistedState();
-  if (!saved) return {
-    costs: COSTS_DEFAULT,
-    costLog: [{ date: "18/02/2025 09:00", costs: { ...COSTS_DEFAULT }, note: "Configuração inicial", impact: null }],
-    productOverrides: {},
-    productHistory: {},
-    strategicParams: { ...STRATEGIC_PARAMS_DEFAULT },
-  };
-  return {
-    costs: saved.costs || COSTS_DEFAULT,
-    costLog: saved.costLog || [],
-    productOverrides: saved.productOverrides || {},
-    productHistory: saved.productHistory || {},
-    strategicParams: saved.strategicParams || { ...STRATEGIC_PARAMS_DEFAULT },
-  };
+  if (!saved) return { costs: COSTS_DEFAULT, costLog: [{ date: "18/02/2025 09:00", costs: { ...COSTS_DEFAULT }, note: "Configuração inicial", impact: null }], productOverrides: {}, productHistory: {}, strategicParams: { ...STRATEGIC_PARAMS_DEFAULT } };
+  return { costs: saved.costs || COSTS_DEFAULT, costLog: saved.costLog || [], productOverrides: saved.productOverrides || {}, productHistory: saved.productHistory || {}, strategicParams: saved.strategicParams || { ...STRATEGIC_PARAMS_DEFAULT } };
 };
 
 /* ═══════════════════════════════════════
    CONTEXT
 ═══════════════════════════════════════ */
-
 const AppCtx = createContext(null);
 const useApp = () => useContext(AppCtx);
 
@@ -403,7 +382,6 @@ function AppProvider({ children }) {
   const [updateFeedback, setUpdateFeedback] = useState(null);
 
   const fin = useMemo(() => calcFinancials(costs, productOverrides), [costs, productOverrides]);
-
   const persistTimerRef = useRef(null);
   const strategicParamsRef = useRef(strategicParams);
   useEffect(() => { strategicParamsRef.current = strategicParams; }, [strategicParams]);
@@ -415,22 +393,14 @@ function AppProvider({ children }) {
     }, 250);
   }, []);
 
-  useEffect(() => {
-    schedulePersist(costs, costLog, productOverrides, productHistory);
-  }, [costs, costLog, productOverrides, productHistory, schedulePersist]);
+  useEffect(() => { schedulePersist(costs, costLog, productOverrides, productHistory); }, [costs, costLog, productOverrides, productHistory, schedulePersist]);
 
   const updateCosts = useCallback((newCosts, note = "Atualização manual") => {
     const prevFin = calcFinancials(costs, productOverrides);
     const nextFin = calcFinancials(newCosts, productOverrides);
-    const impact = {
-      marDelta: nextFin.netMar30 - prevFin.netMar30,
-      profDelta: nextFin.netProfit30 - prevFin.netProfit30,
-      prevMar: prevFin.netMar30, nextMar: nextFin.netMar30,
-      prevProf: prevFin.netProfit30, nextProf: nextFin.netProfit30,
-    };
+    const impact = { marDelta: nextFin.netMar30 - prevFin.netMar30, profDelta: nextFin.netProfit30 - prevFin.netProfit30, prevMar: prevFin.netMar30, nextMar: nextFin.netMar30, prevProf: prevFin.netProfit30, nextProf: nextFin.netProfit30 };
     const newLog = [{ date: nowStr(), costs: { ...newCosts }, note, impact }, ...costLog];
-    setCosts(newCosts);
-    setCostLog(newLog);
+    setCosts(newCosts); setCostLog(newLog);
     if (Math.abs(impact.marDelta) >= 0.3) setCostAlert(impact);
     schedulePersist(newCosts, newLog, productOverrides, productHistory);
   }, [costs, costLog, productOverrides, productHistory, schedulePersist]);
@@ -442,47 +412,29 @@ function AppProvider({ children }) {
     const prevOv = productOverrides[pid] || {};
     const isCustom = !!prevOv._custom;
     if (!rawP && !isCustom) return;
-
     const prevPrice = prevOv.price ?? rawP?.price ?? 0;
-    const prevVc    = prevOv.vc    ?? rawP?.vc    ?? 0;
-
+    const prevVc = prevOv.vc ?? rawP?.vc ?? 0;
     const effectiveOv = { ...prevOv };
-    if (typeof changes.price === "number" && changes.price > 0)  effectiveOv.price = changes.price;
-    if (typeof changes.vc    === "number" && changes.vc    >= 0) effectiveOv.vc    = changes.vc;
-    if (typeof changes.cat   === "string" && changes.cat)        effectiveOv.cat   = changes.cat;
-    if (typeof changes.role  === "string" && changes.role)       effectiveOv.role  = changes.role;
-    if (changes._removed === true)  effectiveOv._removed = true;
-    if (changes._active  === true)  delete effectiveOv._removed;
-
+    if (typeof changes.price === "number" && changes.price > 0) effectiveOv.price = changes.price;
+    if (typeof changes.vc === "number" && changes.vc >= 0) effectiveOv.vc = changes.vc;
+    if (typeof changes.cat === "string" && changes.cat) effectiveOv.cat = changes.cat;
+    if (typeof changes.role === "string" && changes.role) effectiveOv.role = changes.role;
+    if (changes._removed === true) effectiveOv._removed = true;
+    if (changes._active === true) delete effectiveOv._removed;
     if (!isCustom && rawP) {
       if (effectiveOv.price === rawP.price) delete effectiveOv.price;
-      if (effectiveOv.vc    === rawP.vc)    delete effectiveOv.vc;
-      if (effectiveOv.cat   === rawP.cat)   delete effectiveOv.cat;
-      if (effectiveOv.role  === rawP.role)  delete effectiveOv.role;
+      if (effectiveOv.vc === rawP.vc) delete effectiveOv.vc;
+      if (effectiveOv.cat === rawP.cat) delete effectiveOv.cat;
+      if (effectiveOv.role === rawP.role) delete effectiveOv.role;
     }
-
-    setProductOverrides(prev => {
-      const next = { ...prev };
-      if (!isCustom && Object.keys(effectiveOv).length === 0) { delete next[pid]; }
-      else { next[pid] = effectiveOv; }
-      return next;
-    });
-
+    setProductOverrides(prev => { const next = { ...prev }; if (!isCustom && Object.keys(effectiveOv).length === 0) { delete next[pid]; } else { next[pid] = effectiveOv; } return next; });
     const histEntries = [];
     const iso = new Date().toISOString();
-    if (typeof changes.price === "number" && changes.price !== prevPrice)
-      histEntries.push({ date: nowStr(), field: "Preço", oldVal: prevPrice, newVal: changes.price, note, effectiveFrom: iso });
-    if (typeof changes.vc === "number" && changes.vc !== prevVc)
-      histEntries.push({ date: nowStr(), field: "Custo Variável", oldVal: prevVc, newVal: changes.vc, note, effectiveFrom: iso });
-    if (changes._removed === true)
-      histEntries.push({ date: nowStr(), field: "Status", oldVal: "Ativo", newVal: "Inativo", note, effectiveFrom: iso });
-    if (changes._active === true)
-      histEntries.push({ date: nowStr(), field: "Status", oldVal: "Inativo", newVal: "Ativo", note, effectiveFrom: iso });
-
-    if (histEntries.length > 0) {
-      setProductHistory(prev => ({ ...prev, [pid]: [...histEntries, ...(prev[pid] || [])] }));
-    }
-
+    if (typeof changes.price === "number" && changes.price !== prevPrice) histEntries.push({ date: nowStr(), field: "Preço", oldVal: prevPrice, newVal: changes.price, note, effectiveFrom: iso });
+    if (typeof changes.vc === "number" && changes.vc !== prevVc) histEntries.push({ date: nowStr(), field: "Custo Variável", oldVal: prevVc, newVal: changes.vc, note, effectiveFrom: iso });
+    if (changes._removed === true) histEntries.push({ date: nowStr(), field: "Status", oldVal: "Ativo", newVal: "Inativo", note, effectiveFrom: iso });
+    if (changes._active === true) histEntries.push({ date: nowStr(), field: "Status", oldVal: "Inativo", newVal: "Ativo", note, effectiveFrom: iso });
+    if (histEntries.length > 0) setProductHistory(prev => ({ ...prev, [pid]: [...histEntries, ...(prev[pid] || [])] }));
     const prodName = isCustom ? (prevOv.name || `Produto #${pid}`) : rawP.name;
     setUpdateFeedback({ id: pid, msg: `${prodName} atualizado em ${todayStr()}` });
     setTimeout(() => setUpdateFeedback(null), 3500);
@@ -500,15 +452,11 @@ function AppProvider({ children }) {
   const addProduct = useCallback((productData) => {
     const { name, cat, price, vc, role } = productData;
     if (!name?.trim() || !price || price <= 0 || vc === undefined || vc < 0 || !cat) return false;
-    const exists = RAW_PRODUCTS.some(p => p.name.toLowerCase() === name.toLowerCase())
-      || Object.values(productOverrides).some(o => o._custom && o.name?.toLowerCase() === name.toLowerCase());
+    const exists = RAW_PRODUCTS.some(p => p.name.toLowerCase() === name.toLowerCase()) || Object.values(productOverrides).some(o => o._custom && o.name?.toLowerCase() === name.toLowerCase());
     if (exists) return false;
     const customCount = Object.values(productOverrides).filter(o => o._custom).length;
     const newId = 100 + customCount + 1;
-    setProductOverrides(prev => ({
-      ...prev,
-      [newId]: { _custom: true, name: name.trim(), cat, price, vc, role: role || "Diferencial", rating: 4.5, nRat: 0, addedAt: new Date().toISOString() },
-    }));
+    setProductOverrides(prev => ({ ...prev, [newId]: { _custom: true, name: name.trim(), cat, price, vc, role: role || "Diferencial", rating: 4.5, nRat: 0, addedAt: new Date().toISOString() } }));
     setUpdateFeedback({ id: newId, msg: `${name.trim()} adicionado ao cardápio` });
     setTimeout(() => setUpdateFeedback(null), 4000);
     return newId;
@@ -518,9 +466,7 @@ function AppProvider({ children }) {
     clearPersistedState();
     setCosts(COSTS_DEFAULT);
     setCostLog([{ date: nowStr(), costs: { ...COSTS_DEFAULT }, note: "Reset manual", impact: null }]);
-    setCostAlert(null);
-    setProductOverrides({});
-    setProductHistory({});
+    setCostAlert(null); setProductOverrides({}); setProductHistory({});
     setStrategicParams({ ...STRATEGIC_PARAMS_DEFAULT });
     setUpdateFeedback({ id: null, msg: "Sistema restaurado ao padrão." });
     setTimeout(() => setUpdateFeedback(null), 4000);
@@ -531,17 +477,12 @@ function AppProvider({ children }) {
     strategicParams, updateCosts, clearCostAlert, updateProduct, resetProduct, clearAll, addProduct,
   }), [fin, costs, costLog, costAlert, productOverrides, productHistory, updateFeedback, strategicParams, updateCosts, clearCostAlert, updateProduct, resetProduct, clearAll, addProduct]);
 
-  return (
-    <AppCtx.Provider value={ctx}>
-      {children}
-    </AppCtx.Provider>
-  );
+  return <AppCtx.Provider value={ctx}>{children}</AppCtx.Provider>;
 }
 
 /* ═══════════════════════════════════════
    DESIGN TOKENS
 ═══════════════════════════════════════ */
-
 const T = {
   bg: "#0C0A09", panel: "#151210", dark: "#100E0C", edge: "#2A2420",
   sand: "#F0D8B0", sandLight: "#FAF0DC", sandMid: "#D8C498", muted: "#8A7A6A", subtle: "#6A5E52",
@@ -553,16 +494,13 @@ const T = {
 /* ═══════════════════════════════════════
    UTILS & ATOMS
 ═══════════════════════════════════════ */
-
 const safeNum = n => (typeof n === "number" && isFinite(n) ? n : 0);
 const fmtBRL = n => safeNum(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const fmtBRL2 = n => safeNum(n).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtPct = n => `${safeNum(n).toFixed(1)}%`;
 
 const Tag = memo(({ children, color, xs }) => (
-  <span style={{ fontSize: xs ? 9 : 10, fontWeight: 700, letterSpacing: "0.07em", padding: xs ? "2px 8px" : "3px 10px", borderRadius: 999, background: color + "18", color, border: `1px solid ${color}55` }}>
-    {children}
-  </span>
+  <span style={{ fontSize: xs ? 9 : 10, fontWeight: 700, letterSpacing: "0.07em", padding: xs ? "2px 8px" : "3px 10px", borderRadius: 999, background: color + "18", color, border: `1px solid ${color}55` }}>{children}</span>
 ));
 
 const KPI = memo(({ label, value, sub, color }) => (
@@ -574,15 +512,11 @@ const KPI = memo(({ label, value, sub, color }) => (
 ));
 
 const Panel = memo(({ children, style }) => (
-  <div style={{ background: T.panel, border: "1px solid #2E2820", borderRadius: 14, padding: "20px 22px", ...style }}>
-    {children}
-  </div>
+  <div style={{ background: T.panel, border: "1px solid #2E2820", borderRadius: 14, padding: "20px 22px", ...style }}>{children}</div>
 ));
 
 const PL = ({ children }) => (
-  <div style={{ fontSize: 9, color: T.sandMid, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 13, fontWeight: 700 }}>
-    {children}
-  </div>
+  <div style={{ fontSize: 9, color: T.sandMid, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 13, fontWeight: 700 }}>{children}</div>
 );
 
 const SH = ({ eyebrow, title }) => (
@@ -606,48 +540,29 @@ const ChartTip = ({ active, payload, label }) => {
   );
 };
 
-const InlineEditor = memo(({ value, onSave, type = "price", small = false }) => {
+const InlineEditor = memo(({ value, onSave, small = false }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef(null);
-
   const open = () => { setDraft(String(value)); setEditing(true); };
   const cancel = () => setEditing(false);
-  const save = () => {
-    const v = parseFloat(draft);
-    if (!isNaN(v) && v >= 0) onSave(v);
-    setEditing(false);
-  };
-  const keyDown = e => {
-    if (e.key === "Enter") { e.preventDefault(); save(); }
-    if (e.key === "Escape") { e.preventDefault(); cancel(); }
-  };
+  const save = () => { const v = parseFloat(draft); if (!isNaN(v) && v >= 0) onSave(v); setEditing(false); };
+  const keyDown = e => { if (e.key === "Enter") { e.preventDefault(); save(); } if (e.key === "Escape") { e.preventDefault(); cancel(); } };
   useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
 
   if (editing) {
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
         <span style={{ fontSize: small ? 9 : 10, color: T.muted }}>R$</span>
-        <input
-          ref={inputRef}
-          type="number"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={keyDown}
-          onBlur={save}
-          style={{ width: small ? 52 : 64, background: "#0e0c0a", border: `1px solid ${T.accent}88`, borderRadius: 5, padding: small ? "2px 5px" : "3px 7px", fontSize: small ? 11 : 12, color: T.sand, outline: "none", fontFamily: "inherit" }}
-        />
-        <button onClick={save}   style={{ background: "none", border: "none", cursor: "pointer", color: T.green, fontSize: 12, padding: 0 }}>✓</button>
+        <input ref={inputRef} type="number" value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={keyDown} onBlur={save}
+          style={{ width: small ? 52 : 64, background: "#0e0c0a", border: `1px solid ${T.accent}88`, borderRadius: 5, padding: small ? "2px 5px" : "3px 7px", fontSize: small ? 11 : 12, color: T.sand, outline: "none", fontFamily: "inherit" }} />
+        <button onClick={save} style={{ background: "none", border: "none", cursor: "pointer", color: T.green, fontSize: 12, padding: 0 }}>✓</button>
         <button onClick={cancel} style={{ background: "none", border: "none", cursor: "pointer", color: T.muted, fontSize: 12, padding: 0 }}>✕</button>
       </div>
     );
   }
-
   return (
-    <button
-      onClick={open}
-      style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", borderRadius: 4, fontFamily: "inherit", color: T.sand, fontSize: small ? 11 : 12, fontWeight: 600, fontVariantNumeric: "tabular-nums", borderBottom: `1px dashed ${T.muted}44` }}
-    >
+    <button onClick={open} style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", borderRadius: 4, fontFamily: "inherit", color: T.sand, fontSize: small ? 11 : 12, fontWeight: 600, fontVariantNumeric: "tabular-nums", borderBottom: `1px dashed ${T.muted}44` }}>
       R$ {safeNum(value).toFixed(2).replace(".", ",")}
     </button>
   );
@@ -656,7 +571,6 @@ const InlineEditor = memo(({ value, onSave, type = "price", small = false }) => 
 /* ═══════════════════════════════════════
    TOASTS
 ═══════════════════════════════════════ */
-
 const CostToast = memo(() => {
   const { costAlert, clearCostAlert } = useApp();
   if (!costAlert) return null;
@@ -695,33 +609,25 @@ const UpdateToast = memo(() => {
 /* ═══════════════════════════════════════
    DASHBOARD
 ═══════════════════════════════════════ */
-
 const Dashboard = memo(({ period, setPeriod }) => {
   const { fin } = useApp();
   const [sliderDays, setSliderDays] = useState(parseInt(period) || 90);
   const days = sliderDays;
 
-  useEffect(() => {
-    const ext = parseInt(period);
-    if (ext && ext !== sliderDays) setSliderDays(ext);
-  }, [period]);
+  useEffect(() => { const ext = parseInt(period); if (ext && ext !== sliderDays) setSliderDays(ext); }, [period]);
 
   const slice = useMemo(() => (fin.dayAgg || DAILY_AGG).slice(-days), [days, fin.dayAgg]);
   const rev   = useMemo(() => slice.reduce((a, d) => a + d.revenue, 0), [slice]);
   const gp    = useMemo(() => slice.reduce((a, d) => a + d.grossProfit, 0), [slice]);
   const qty   = useMemo(() => slice.reduce((a, d) => a + d.orders, 0), [slice]);
   const gm    = rev > 0 ? (gp / rev * 100) : 0;
-
   const priorities = useMemo(() => calcWeekPriorities(fin), [fin]);
   const priColors = { critical: T.red, warning: T.orange, success: T.green, info: T.blue };
 
   const catData = useMemo(() => {
     const periodMult = days / 90;
     const cats = {};
-    fin.products.forEach(p => {
-      if (!cats[p.cat]) cats[p.cat] = { cat: p.cat, rev: 0 };
-      cats[p.cat].rev += p.rev90 * periodMult;
-    });
+    fin.products.forEach(p => { if (!cats[p.cat]) cats[p.cat] = { cat: p.cat, rev: 0 }; cats[p.cat].rev += p.rev90 * periodMult; });
     return Object.values(cats);
   }, [fin, days]);
 
@@ -731,8 +637,6 @@ const Dashboard = memo(({ period, setPeriod }) => {
   return (
     <>
       <SH eyebrow="Pizzaria Suburbanos · São Paulo · 12 meses de histórico" title="Dashboard Estratégico" />
-
-      {/* Slider */}
       <div style={{ marginBottom: 22, background: T.panel, border: "1px solid #2E2820", borderRadius: 12, padding: "16px 20px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -750,20 +654,18 @@ const Dashboard = memo(({ period, setPeriod }) => {
         </div>
         <div>
           <style>{`.sub-slider{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;outline:none;cursor:pointer;}.sub-slider::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:${T.sand};border:2px solid ${T.bg};box-shadow:0 0 0 2px ${T.accent}66;cursor:pointer;}.sub-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:${T.sand};border:2px solid ${T.bg};cursor:pointer;}`}</style>
-          <input
-            type="range" className="sub-slider" min={7} max={365} step={1} value={days}
+          <input type="range" className="sub-slider" min={7} max={365} step={1} value={days}
             onChange={e => { const v = parseInt(e.target.value); setSliderDays(v); setPeriod(String(v)); }}
-            style={{ width: "100%", height: 4, background: `linear-gradient(to right,${T.accent} 0%,${T.accent} ${((days - 7) / (365 - 7)) * 100}%,#2A2420 ${((days - 7) / (365 - 7)) * 100}%,#2A2420 100%)` }}
-          />
+            style={{ width: "100%", height: 4, background: `linear-gradient(to right,${T.accent} 0%,${T.accent} ${((days - 7) / (365 - 7)) * 100}%,#2A2420 ${((days - 7) / (365 - 7)) * 100}%,#2A2420 100%)` }} />
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
             {["7d", "30d", "90d", "180d", "365d"].map(l => <span key={l} style={{ fontSize: 8, color: T.subtle }}>{l}</span>)}
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginTop: 14 }}>
           {[
-            { l: "Faturamento",   v: fmtBRL(rev),    c: T.sand },
-            { l: "Lucro Bruto",   v: fmtBRL(gp),     c: T.green },
-            { l: "Margem Bruta",  v: fmtPct(gm),     c: gm > 55 ? T.green : gm > 38 ? T.accent : T.red },
+            { l: "Faturamento", v: fmtBRL(rev), c: T.sand },
+            { l: "Lucro Bruto", v: fmtBRL(gp), c: T.green },
+            { l: "Margem Bruta", v: fmtPct(gm), c: gm > 55 ? T.green : gm > 38 ? T.accent : T.red },
             { l: "Volume (itens)", v: qty.toLocaleString("pt-BR"), c: T.sandMid },
           ].map(({ l, v, c }) => (
             <div key={l} style={{ background: T.dark, borderRadius: 8, padding: "10px 12px" }}>
@@ -838,7 +740,6 @@ const Dashboard = memo(({ period, setPeriod }) => {
 /* ═══════════════════════════════════════
    ALERTS
 ═══════════════════════════════════════ */
-
 const Alerts = memo(() => {
   const { fin } = useApp();
   const colors = { critical: T.red, warning: T.orange, success: T.green, info: T.blue };
@@ -853,17 +754,13 @@ const Alerts = memo(() => {
       const p = fin.products.find(x => x.id === a.pid);
       list.push({ type: "warning", product: a.name, cat: p?.cat || "", date: "7 dias", msg: `Queda de ${Math.abs(a.wow).toFixed(0)}% no volume semana a semana. Avaliar visibilidade no iFood e cardápio.` });
     });
-    if (fin.netMar30 < 8) {
-      list.push({ type: "critical", product: "Margem Geral", cat: "Financeiro", date: "Agora", msg: `Margem líquida em ${fmtPct(fin.netMar30)} — abaixo do mínimo de 8%.` });
-    }
+    if (fin.netMar30 < 8) list.push({ type: "critical", product: "Margem Geral", cat: "Financeiro", date: "Agora", msg: `Margem líquida em ${fmtPct(fin.netMar30)} — abaixo do mínimo de 8%.` });
     detectAnomalies(fin.products).filter(a => a.type === "crescimento").forEach(a => {
       const p = fin.products.find(x => x.id === a.pid);
       list.push({ type: "success", product: a.name, cat: p?.cat || "", date: "7 dias", msg: `Crescimento de ${a.wow.toFixed(0)}% no volume. Capitalizar com destaque no iFood e stories.` });
     });
     const conc = calcConcentration(fin.products);
-    if (conc.top3Pct > 55) {
-      list.push({ type: "info", product: "Concentração de Receita", cat: "Estratégico", date: "90 dias", msg: `${conc.top3Pct.toFixed(0)}% da receita em 3 produtos: ${conc.top3.map(p => p.name).join(", ")}.` });
-    }
+    if (conc.top3Pct > 55) list.push({ type: "info", product: "Concentração de Receita", cat: "Estratégico", date: "90 dias", msg: `${conc.top3Pct.toFixed(0)}% da receita em 3 produtos: ${conc.top3.map(p => p.name).join(", ")}.` });
     fin.products.filter(p => p.grossMar > 65 && p.qty90 < fin.avgVol * 0.5).forEach(p => {
       list.push({ type: "info", product: p.name, cat: p.cat, date: "90 dias", msg: `Margem bruta de ${fmtPct(p.grossMar)} com volume baixo (${p.qty90} un). Produto subaproveitado.` });
     });
@@ -902,9 +799,8 @@ const Alerts = memo(() => {
 });
 
 /* ═══════════════════════════════════════
-   MENU ANALYSIS
+   MATRIZ ESTRATÉGICA
 ═══════════════════════════════════════ */
-
 const MatrizEstrategica = memo(({ enriched, fin }) => {
   const [hovered, setHovered] = useState(null);
   const [tipPos, setTipPos] = useState({ x: 0, y: 0 });
@@ -922,12 +818,10 @@ const MatrizEstrategica = memo(({ enriched, fin }) => {
   const vPad = (vMax - vMin) * 0.13 || 6;
   const nmLo = nmMin - nmPad, nmHi = nmMax + nmPad;
   const vLo = vMin - vPad, vHi = vMax + vPad;
-
   const cx = nm => PAD.left + ((nm - nmLo) / (nmHi - nmLo)) * plotW;
   const cy = v => PAD.top + (1 - (v - vLo) / (vHi - vLo)) * plotH;
   const refX = cx(fin.avgNetMar);
   const refY = cy(fin.avgVol);
-
   const nmTicks = Array.from({ length: 6 }, (_, i) => nmLo + (nmHi - nmLo) * i / 5);
   const vTicks = Array.from({ length: 5 }, (_, i) => vLo + (vHi - vLo) * i / 4);
 
@@ -946,7 +840,6 @@ const MatrizEstrategica = memo(({ enriched, fin }) => {
     setTipPos({ x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY });
   };
   const onLeave = () => setHovered(null);
-
   const TW = 190, TH = 130;
   const tipX = tipPos.x + 14 + TW > W ? tipPos.x - TW - 14 : tipPos.x + 14;
   const tipY = tipPos.y - 10 + TH > H ? tipPos.y - TH + 10 : tipPos.y - 10;
@@ -1016,15 +909,15 @@ const MatrizEstrategica = memo(({ enriched, fin }) => {
                 <text x={tx + 14} y={ty + 18} fill={T.sandLight} fontSize={11} fontWeight="800">{p.name.length > 22 ? p.name.slice(0, 21) + "…" : p.name}</text>
                 <line x1={tx + 8} y1={ty + 28} x2={tx + TW - 8} y2={ty + 28} stroke="#2a2420" strokeWidth={1} />
                 {[
-                  ["Margem Bruta",   fmtPct(p.grossMar)],
+                  ["Margem Bruta", fmtPct(p.grossMar)],
                   ["Margem Líquida", fmtPct(p.netMar)],
-                  ["Volume 90d",     `${p.qty90} un`],
-                  ["Receita 90d",    fmtBRL(p.rev90)],
-                  ["Avaliação",      `${p.rating}★`],
-                  ["WoW",            `${p.wow >= 0 ? "+" : ""}${Number(p.wow).toFixed(0)}%`],
+                  ["Volume 90d", `${p.qty90} un`],
+                  ["Receita 90d", fmtBRL(p.rev90)],
+                  ["Avaliação", `${p.rating}★`],
+                  ["WoW", `${p.wow >= 0 ? "+" : ""}${Number(p.wow).toFixed(0)}%`],
                 ].map(([label, val], i) => (
                   <g key={label}>
-                    <text x={tx + 14}     y={ty + 42 + i * 14} fill="#5e584f" fontSize={9}>{label}</text>
+                    <text x={tx + 14} y={ty + 42 + i * 14} fill="#5e584f" fontSize={9}>{label}</text>
                     <text x={tx + TW - 10} y={ty + 42 + i * 14} textAnchor="end" fill={
                       label === "Margem Líquida" ? (p.netMar < 0 ? T.red : p.netMar > 12 ? T.green : T.accent) :
                       label === "WoW" ? (p.wow >= 0 ? T.green : T.red) : T.sand
@@ -1040,6 +933,9 @@ const MatrizEstrategica = memo(({ enriched, fin }) => {
   );
 });
 
+/* ═══════════════════════════════════════
+   MENU ANALYSIS
+═══════════════════════════════════════ */
 const MenuAnalysis = memo(() => {
   const { fin, productOverrides, productHistory, updateProduct, resetProduct } = useApp();
   const [sort, setSort] = useState("rev90");
@@ -1060,9 +956,7 @@ const MenuAnalysis = memo(() => {
       <SH eyebrow="Inteligência de Cardápio" title="Análise de Produtos" />
       <div style={{ display: "flex", gap: 6, marginBottom: 16, borderBottom: T.border, paddingBottom: 14 }}>
         {[["tabela", "◈ Cardápio & Edição"], ["historico", "⊟ Histórico de Preços"]].map(([k, l]) => (
-          <button key={k} onClick={() => setMenuTab(k)} style={{ padding: "6px 16px", borderRadius: 7, border: `1px solid ${menuTab === k ? T.sand : T.edge}`, background: menuTab === k ? T.sand + "14" : "transparent", color: menuTab === k ? T.sand : T.muted, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-            {l}
-          </button>
+          <button key={k} onClick={() => setMenuTab(k)} style={{ padding: "6px 16px", borderRadius: 7, border: `1px solid ${menuTab === k ? T.sand : T.edge}`, background: menuTab === k ? T.sand + "14" : "transparent", color: menuTab === k ? T.sand : T.muted, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{l}</button>
         ))}
       </div>
 
@@ -1077,9 +971,7 @@ const MenuAnalysis = memo(() => {
               <PL>Cardápio — {sorted.length} produtos</PL>
               <div style={{ display: "flex", gap: 5 }}>
                 {[["rev90", "Receita"], ["netMar", "M.Líquida"], ["grossMar", "M.Bruta"], ["qty90", "Volume"], ["health", "Saúde"]].map(([k, l]) => (
-                  <button key={k} onClick={() => setSort(k)} style={{ fontSize: 9, padding: "4px 10px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, background: sort === k ? T.sand : "transparent", color: sort === k ? T.black : T.muted, border: `1px solid ${sort === k ? T.sand : T.edge}` }}>
-                    {l}
-                  </button>
+                  <button key={k} onClick={() => setSort(k)} style={{ fontSize: 9, padding: "4px 10px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit", fontWeight: 700, background: sort === k ? T.sand : "transparent", color: sort === k ? T.black : T.muted, border: `1px solid ${sort === k ? T.sand : T.edge}` }}>{l}</button>
                 ))}
               </div>
             </div>
@@ -1109,17 +1001,17 @@ const MenuAnalysis = memo(() => {
                         </td>
                         <td style={{ padding: "9px 9px", color: T.muted, fontSize: 9, whiteSpace: "nowrap" }}>{p.cat.split(" ")[0]}</td>
                         <td style={{ padding: "6px 9px" }}>
-                          <InlineEditor value={p.price} onSave={v => updateProduct(p.id, { price: v }, "Edição inline")} type="price" />
+                          <InlineEditor value={p.price} onSave={v => updateProduct(p.id, { price: v }, "Edição inline")} />
                           {p.isEdited && raw && raw.price !== p.price && <div style={{ fontSize: 8, color: "#3a3630", textDecoration: "line-through", marginTop: 1 }}>R$ {raw.price},00</div>}
                         </td>
                         <td style={{ padding: "6px 9px" }}>
-                          <InlineEditor value={p.vc} onSave={v => updateProduct(p.id, { vc: v }, "Edição inline")} type="vc" />
+                          <InlineEditor value={p.vc} onSave={v => updateProduct(p.id, { vc: v }, "Edição inline")} />
                           {p.isEdited && raw && raw.vc !== p.vc && <div style={{ fontSize: 8, color: "#3a3630", textDecoration: "line-through", marginTop: 1 }}>R$ {raw.vc},00</div>}
                         </td>
                         <td style={{ padding: "9px 9px", color: "#6A6460", fontVariantNumeric: "tabular-nums" }}>{fmtBRL2(p.fixedPerUnit)}</td>
-                        <td style={{ padding: "9px 9px", color: p.grossMar > 55 ? T.green : p.grossMar > 38 ? T.accent : T.red, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtPct(p.grossMar)}</td>
-                        <td style={{ padding: "9px 9px", color: p.netMar > 12 ? T.green : p.netMar > 0 ? T.accent : T.red, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{fmtPct(p.netMar)}</td>
-                        <td style={{ padding: "9px 9px", color: "#5a5248", fontVariantNumeric: "tabular-nums" }}>{p.qty90}</td>
+                        <td style={{ padding: "9px 9px", color: p.grossMar > 55 ? T.green : p.grossMar > 38 ? T.accent : T.red, fontWeight: 700 }}>{fmtPct(p.grossMar)}</td>
+                        <td style={{ padding: "9px 9px", color: p.netMar > 12 ? T.green : p.netMar > 0 ? T.accent : T.red, fontWeight: 800 }}>{fmtPct(p.netMar)}</td>
+                        <td style={{ padding: "9px 9px", color: "#5a5248" }}>{p.qty90}</td>
                         <td style={{ padding: "9px 9px", color: p.wow > 0 ? T.green : T.red, fontWeight: 600, fontSize: 10 }}>{p.wow > 0 ? "▲" : "▼"}{Math.abs(p.wow).toFixed(0)}%</td>
                         <td style={{ padding: "9px 9px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -1132,7 +1024,7 @@ const MenuAnalysis = memo(() => {
                         <td style={{ padding: "9px 9px" }}><Tag color={p.quadrant.color} xs>{p.quadrant.label}</Tag></td>
                         <td style={{ padding: "9px 6px" }}>
                           {p.isEdited && (
-                            <button onClick={() => resetProduct(p.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.muted, fontSize: 10, padding: "2px 4px", borderRadius: 4, fontFamily: "inherit" }} onMouseEnter={e => e.currentTarget.style.color = T.red} onMouseLeave={e => e.currentTarget.style.color = T.muted}>↺</button>
+                            <button onClick={() => resetProduct(p.id)} style={{ background: "none", border: "none", cursor: "pointer", color: T.muted, fontSize: 10, padding: "2px 4px", borderRadius: 4, fontFamily: "inherit" }}>↺</button>
                           )}
                         </td>
                       </tr>
@@ -1207,16 +1099,13 @@ const MenuAnalysis = memo(() => {
 /* ═══════════════════════════════════════
    SIMULATION
 ═══════════════════════════════════════ */
-
 const Simulation = memo(() => {
   const { fin, updateProduct } = useApp();
   const [selPid, setSelPid] = useState(fin.products[0]?.id || 1);
   const [newPrice, setNewPrice] = useState("");
   const [applyConfirm, setApplyConfirm] = useState(false);
-
   const selProduct = useMemo(() => fin.products.find(p => p.id === selPid), [fin, selPid]);
   const priceResult = useMemo(() => selProduct && newPrice ? simulatePrice(selProduct, parseFloat(newPrice), fin) : null, [selProduct, newPrice, fin]);
-
   useEffect(() => { setApplyConfirm(false); }, [selPid, newPrice]);
 
   return (
@@ -1243,13 +1132,8 @@ const Simulation = memo(() => {
           )}
           <div>
             <label style={{ fontSize: 9, color: T.muted, letterSpacing: "0.12em", display: "block", marginBottom: 5 }}>Novo Preço (R$)</label>
-            <input
-              type="number"
-              value={newPrice}
-              onChange={e => setNewPrice(e.target.value)}
-              placeholder={selProduct ? String(selProduct.price) : "0"}
-              style={{ width: "100%", background: "#121008", border: T.border, borderRadius: 7, padding: "8px 12px", fontSize: 12, color: T.sand, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
-            />
+            <input type="number" value={newPrice} onChange={e => setNewPrice(e.target.value)} placeholder={selProduct ? String(selProduct.price) : "0"}
+              style={{ width: "100%", background: "#121008", border: T.border, borderRadius: 7, padding: "8px 12px", fontSize: 12, color: T.sand, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
           </div>
         </Panel>
 
@@ -1280,9 +1164,9 @@ const Simulation = memo(() => {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
                 {[
-                  { key: "otimista",   label: "OTIMISTA",   icon: "▲", color: T.green  },
-                  { key: "base",       label: "BASE",        icon: "◎", color: T.accent },
-                  { key: "pessimista", label: "PESSIMISTA",  icon: "▼", color: T.red    },
+                  { key: "otimista", label: "OTIMISTA", icon: "▲", color: T.green },
+                  { key: "base", label: "BASE", icon: "◎", color: T.accent },
+                  { key: "pessimista", label: "PESSIMISTA", icon: "▼", color: T.red },
                 ].map(({ key, label, icon, color }) => {
                   const s = priceResult.scenarios[key];
                   const volDelta = s.volImpact - selProduct.qty90;
@@ -1341,7 +1225,6 @@ const Simulation = memo(() => {
 /* ═══════════════════════════════════════
    PIE CHART
 ═══════════════════════════════════════ */
-
 const PIE_COLORS = { aluguel: "#E07820", energia: "#58B868", agua: "#5090C8", gas: "#D08040", folha: "#D45050", taxas: "#9070C0", marketing: "#40A8A8", outros: "#808070" };
 
 const CostPieChart = memo(({ costs, totalFixed }) => {
@@ -1362,13 +1245,16 @@ const CostPieChart = memo(({ costs, totalFixed }) => {
     return { key: k, path, pct: pct2, v, color: PIE_COLORS[k] || T.muted };
   });
   const hoveredSlice = hovered ? slices.find(s => s.key === hovered) : null;
+
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
       <div style={{ position: "relative", flexShrink: 0 }}>
         <style>{`.pie-s{transition:opacity 0.18s,transform 0.18s;transform-origin:center;}`}</style>
         <svg width={SIZE} height={SIZE} style={{ overflow: "visible" }}>
           {slices.map(s => (
-            <path key={s.key} className="pie-s" d={s.path} fill={s.color} opacity={hovered && hovered !== s.key ? 0.35 : 0.85} stroke={T.bg} strokeWidth={2} style={{ cursor: "pointer", transform: hovered === s.key ? "scale(1.04)" : "scale(1)" }} onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)} />
+            <path key={s.key} className="pie-s" d={s.path} fill={s.color} opacity={hovered && hovered !== s.key ? 0.35 : 0.85} stroke={T.bg} strokeWidth={2}
+              style={{ cursor: "pointer", transform: hovered === s.key ? "scale(1.04)" : "scale(1)" }}
+              onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)} />
           ))}
           <text x={CX} y={CY - 6} textAnchor="middle" fill={T.sandLight} fontSize={11} fontWeight={800} fontFamily="Georgia,serif">{hoveredSlice ? `${(hoveredSlice.pct * 100).toFixed(0)}%` : `${(total / 1000).toFixed(0)}k`}</text>
           <text x={CX} y={CY + 10} textAnchor="middle" fill={T.muted} fontSize={7}>{hoveredSlice ? COST_LABELS[hoveredSlice.key]?.substring(0, 8) : "TOTAL"}</text>
@@ -1376,7 +1262,8 @@ const CostPieChart = memo(({ costs, totalFixed }) => {
       </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
         {slices.map(s => (
-          <div key={s.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", opacity: hovered && hovered !== s.key ? 0.4 : 1, transition: "opacity 0.15s", padding: "2px 0" }} onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}>
+          <div key={s.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", opacity: hovered && hovered !== s.key ? 0.4 : 1, transition: "opacity 0.15s", padding: "2px 0" }}
+            onMouseEnter={() => setHovered(s.key)} onMouseLeave={() => setHovered(null)}>
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
               <span style={{ fontSize: 10, color: hovered === s.key ? T.sandLight : "#A8A090" }}>{COST_LABELS[s.key]}</span>
@@ -1399,23 +1286,16 @@ const CostPieChart = memo(({ costs, totalFixed }) => {
 /* ═══════════════════════════════════════
    COSTS
 ═══════════════════════════════════════ */
-
 const Costs = memo(() => {
   const { fin, costs, costLog, updateCosts } = useApp();
   const [draft, setDraft] = useState({ ...costs });
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-
   useEffect(() => { setDraft({ ...costs }); setDirty(false); }, [costs]);
-
   const change = (k, v) => { setDraft(p => ({ ...p, [k]: parseFloat(v) || 0 })); setDirty(true); };
   const draftFin = useMemo(() => calcFinancials(draft), [draft]);
   const draftTotal = useMemo(() => Object.values(draft).reduce((a, b) => a + b, 0), [draft]);
-
-  const save = () => {
-    setSaving(true);
-    setTimeout(() => { updateCosts(draft); setDirty(false); setSaving(false); }, 350);
-  };
+  const save = () => { setSaving(true); setTimeout(() => { updateCosts(draft); setDirty(false); setSaving(false); }, 350); };
 
   return (
     <>
@@ -1432,9 +1312,9 @@ const Costs = memo(() => {
         <div style={{ background: "#121008", border: `1px solid ${T.accent}33`, borderRadius: 10, padding: "12px 18px", marginBottom: 14, display: "flex", gap: 22, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ fontSize: 9, color: T.accent, fontWeight: 700, letterSpacing: "0.12em" }}>◈ PRÉVIA EM TEMPO REAL</div>
           {[
-            { l: "Custos Fixos",    prev: fmtBRL(fin.totalFixed),   next: fmtBRL(draftTotal),             delta: draftTotal - fin.totalFixed,               isRev: false },
-            { l: "Margem Líquida",  prev: fmtPct(fin.netMar30),     next: fmtPct(draftFin.netMar30),      delta: draftFin.netMar30 - fin.netMar30,          isRev: true  },
-            { l: "Lucro Líquido",   prev: fmtBRL(fin.netProfit30),  next: fmtBRL(draftFin.netProfit30),   delta: draftFin.netProfit30 - fin.netProfit30,    isRev: false },
+            { l: "Custos Fixos", prev: fmtBRL(fin.totalFixed), next: fmtBRL(draftTotal), delta: draftTotal - fin.totalFixed, isRev: false },
+            { l: "Margem Líquida", prev: fmtPct(fin.netMar30), next: fmtPct(draftFin.netMar30), delta: draftFin.netMar30 - fin.netMar30, isRev: true },
+            { l: "Lucro Líquido", prev: fmtBRL(fin.netProfit30), next: fmtBRL(draftFin.netProfit30), delta: draftFin.netProfit30 - fin.netProfit30, isRev: false },
           ].map(({ l, prev, next, delta, isRev }) => (
             <div key={l}>
               <div style={{ fontSize: 8, color: T.muted, marginBottom: 3 }}>{l}</div>
@@ -1490,7 +1370,6 @@ const Costs = memo(() => {
 /* ═══════════════════════════════════════
    MONTHLY REPORT
 ═══════════════════════════════════════ */
-
 const MonthlyReport = memo(() => {
   const { fin } = useApp();
   const conc = useMemo(() => calcConcentration(fin.products), [fin]);
@@ -1505,13 +1384,13 @@ const MonthlyReport = memo(() => {
         <Panel>
           <PL>Resumo Financeiro</PL>
           {[
-            { l: "Faturamento (30d)",  v: fmtBRL(fin.totalRev30) },
-            { l: "Lucro Bruto",        v: fmtBRL(fin.totalGP30) },
-            { l: "Custos Fixos",       v: fmtBRL(fin.totalFixed) },
-            { l: "Lucro Líquido",      v: fmtBRL(fin.netProfit30), c: fin.netProfit30 > 0 ? T.green : T.red },
-            { l: "Margem Líquida",     v: fmtPct(fin.netMar30),   c: fin.netMar30 > 12 ? T.green : fin.netMar30 > 5 ? T.accent : T.red },
+            { l: "Faturamento (30d)", v: fmtBRL(fin.totalRev30) },
+            { l: "Lucro Bruto", v: fmtBRL(fin.totalGP30) },
+            { l: "Custos Fixos", v: fmtBRL(fin.totalFixed) },
+            { l: "Lucro Líquido", v: fmtBRL(fin.netProfit30), c: fin.netProfit30 > 0 ? T.green : T.red },
+            { l: "Margem Líquida", v: fmtPct(fin.netMar30), c: fin.netMar30 > 12 ? T.green : fin.netMar30 > 5 ? T.accent : T.red },
             { l: "Ponto de Equilíbrio", v: fmtBRL(fin.breakeven) },
-            { l: "Ticket Médio",       v: fmtBRL2(fin.avgTicketVal) },
+            { l: "Ticket Médio", v: fmtBRL2(fin.avgTicketVal) },
           ].map(({ l, v, c }) => (
             <div key={l} style={{ display: "flex", justifyContent: "space-between", marginBottom: 9, paddingBottom: 9, borderBottom: `1px solid ${T.edge}` }}>
               <span style={{ fontSize: 12, color: "#A8A090" }}>{l}</span>
@@ -1612,7 +1491,6 @@ const MonthlyReport = memo(() => {
 /* ═══════════════════════════════════════
    COPILOTO
 ═══════════════════════════════════════ */
-
 const Copilot = memo(() => {
   const { fin, costs } = useApp();
   const [mode, setMode] = useState("interno");
@@ -1627,11 +1505,9 @@ const Copilot = memo(() => {
   const loadingRef = useRef(false);
   const bottomRef = useRef(null);
   const finRef = useRef(fin);
-  const costsRef = useRef(costs);
   const modeRef = useRef(mode);
 
   useEffect(() => { finRef.current = fin; }, [fin]);
-  useEffect(() => { costsRef.current = costs; }, [costs]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
 
@@ -1716,9 +1592,7 @@ ${prods.map(p => `${p.name} | ${p.cat} | R$${p.price} | M.B:${fmtPct(p.grossMar)
             {messages.map((msg, i) => (
               msg.role === "user" ? (
                 <div key={i} style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
-                  <div style={{ maxWidth: "72%", padding: "9px 14px", fontSize: 12, lineHeight: 1.6, borderRadius: "11px 11px 3px 11px", background: "#161208", border: T.border, color: "#8a8078" }}>
-                    {msg.text}
-                  </div>
+                  <div style={{ maxWidth: "72%", padding: "9px 14px", fontSize: 12, lineHeight: 1.6, borderRadius: "11px 11px 3px 11px", background: "#161208", border: T.border, color: "#8a8078" }}>{msg.text}</div>
                 </div>
               ) : (
                 <div key={i} style={{ display: "flex", gap: 10, marginBottom: 18, alignItems: "flex-start" }}>
@@ -1741,14 +1615,9 @@ ${prods.map(p => `${p.name} | ${p.cat} | R$${p.price} | M.B:${fmtPct(p.grossMar)
             <div ref={bottomRef} />
           </div>
           <div style={{ display: "flex", gap: 8, background: T.panel, border: T.border, borderRadius: 11, padding: "3px 3px 3px 15px", alignItems: "center" }}>
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              placeholder="Ex: qual pizza tem melhor margem? …"
-              disabled={loading}
-              style={{ flex: 1, background: "transparent", border: "none", fontSize: 12, color: T.sand, outline: "none", fontFamily: "inherit", padding: "9px 0", opacity: loading ? 0.5 : 1 }}
-            />
+            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+              placeholder="Ex: qual pizza tem melhor margem? …" disabled={loading}
+              style={{ flex: 1, background: "transparent", border: "none", fontSize: 12, color: T.sand, outline: "none", fontFamily: "inherit", padding: "9px 0", opacity: loading ? 0.5 : 1 }} />
             <button onClick={() => send()} disabled={loading || !input.trim()} style={{ background: loading || !input.trim() ? "#1c1812" : T.sand, color: loading || !input.trim() ? T.muted : T.black, border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 11, fontWeight: 800, cursor: loading || !input.trim() ? "not-allowed" : "pointer", fontFamily: "inherit", flexShrink: 0 }}>
               {loading ? "…" : "Enviar"}
             </button>
@@ -1768,10 +1637,10 @@ ${prods.map(p => `${p.name} | ${p.cat} | R$${p.price} | M.B:${fmtPct(p.grossMar)
           <Panel>
             <PL>Status</PL>
             {[
-              { l: "Margem líquida",  v: fmtPct(fin.netMar30),  c: fin.netMar30 > 12 ? T.green : fin.netMar30 > 5 ? T.accent : T.red },
-              { l: "Lucro líquido",   v: fmtBRL(fin.netProfit30), c: fin.netProfit30 > 0 ? T.green : T.red },
-              { l: "Custos fixos",    v: fmtBRL(fin.totalFixed) },
-              { l: "Produtos",        v: String(fin.products.length), c: T.sand },
+              { l: "Margem líquida", v: fmtPct(fin.netMar30), c: fin.netMar30 > 12 ? T.green : fin.netMar30 > 5 ? T.accent : T.red },
+              { l: "Lucro líquido", v: fmtBRL(fin.netProfit30), c: fin.netProfit30 > 0 ? T.green : T.red },
+              { l: "Custos fixos", v: fmtBRL(fin.totalFixed) },
+              { l: "Produtos", v: String(fin.products.length), c: T.sand },
             ].map(({ l, v, c }) => (
               <div key={l} style={{ display: "flex", justifyContent: "space-between", marginBottom: 7, fontSize: 11 }}>
                 <span style={{ color: T.muted }}>{l}</span>
@@ -1788,13 +1657,11 @@ ${prods.map(p => `${p.name} | ${p.cat} | R$${p.price} | M.B:${fmtPct(p.grossMar)
 /* ═══════════════════════════════════════
    SETTINGS
 ═══════════════════════════════════════ */
-
 const Settings = memo(() => {
   const { productOverrides, resetProduct, clearAll } = useApp();
   const [form, setForm] = useState({ name: "Pizzaria Suburbanos", owner: "Roberto Almeida", email: "contato@pizzariasuburbanos.com.br", city: "São Paulo", segment: "Pizzaria Artesanal / Italiana" });
   const [saved, setSaved] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
-
   const f = (k, v) => { setForm(p => ({ ...p, [k]: v })); setSaved(false); };
   const totalEdited = Object.keys(productOverrides || {}).length;
 
@@ -1827,7 +1694,7 @@ const Settings = memo(() => {
           <div style={{ marginTop: 14 }}>
             <div style={{ fontSize: 9, color: T.muted, letterSpacing: "0.12em", marginBottom: 8 }}>RESET DO SISTEMA</div>
             {!resetConfirm ? (
-              <button onClick={handleReset} style={{ background: "transparent", border: `1px solid ${T.edge}`, borderRadius: 8, padding: "9px 16px", fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit", width: "100%" }} onMouseEnter={e => { e.currentTarget.style.borderColor = T.red + "55"; e.currentTarget.style.color = T.red; }} onMouseLeave={e => { e.currentTarget.style.borderColor = T.edge; e.currentTarget.style.color = T.muted; }}>
+              <button onClick={handleReset} style={{ background: "transparent", border: `1px solid ${T.edge}`, borderRadius: 8, padding: "9px 16px", fontSize: 11, color: T.muted, cursor: "pointer", fontFamily: "inherit", width: "100%" }}>
                 Restaurar Estado Padrão
               </button>
             ) : (
@@ -1858,12 +1725,10 @@ const Settings = memo(() => {
                     <span style={{ fontSize: 11, color: T.sand }}>{name}</span>
                     <div style={{ fontSize: 9, color: T.muted, marginTop: 1 }}>
                       {ov.price !== undefined && <span>Preço: {fmtBRL2(raw?.price || 0)} → <b style={{ color: T.accent }}>{fmtBRL2(ov.price)}</b>  </span>}
-                      {ov.vc    !== undefined && <span>C.Var: {fmtBRL2(raw?.vc    || 0)} → <b style={{ color: T.blue }}>{fmtBRL2(ov.vc)}</b></span>}
+                      {ov.vc !== undefined && <span>C.Var: {fmtBRL2(raw?.vc || 0)} → <b style={{ color: T.blue }}>{fmtBRL2(ov.vc)}</b></span>}
                     </div>
                   </div>
-                  <button onClick={() => resetProduct(pidNum)} style={{ background: "none", border: `1px solid ${T.edge}`, cursor: "pointer", color: T.muted, fontSize: 9, padding: "4px 10px", borderRadius: 6, fontFamily: "inherit" }} onMouseEnter={e => { e.currentTarget.style.borderColor = T.red + "66"; e.currentTarget.style.color = T.red; }} onMouseLeave={e => { e.currentTarget.style.borderColor = T.edge; e.currentTarget.style.color = T.muted; }}>
-                    ↺ Reset
-                  </button>
+                  <button onClick={() => resetProduct(pidNum)} style={{ background: "none", border: `1px solid ${T.edge}`, cursor: "pointer", color: T.muted, fontSize: 9, padding: "4px 10px", borderRadius: 6, fontFamily: "inherit" }}>↺ Reset</button>
                 </div>
               );
             })}
@@ -1877,7 +1742,6 @@ const Settings = memo(() => {
 /* ═══════════════════════════════════════
    ROOT
 ═══════════════════════════════════════ */
-
 const NAV = [
   { id: "dashboard",  icon: "▤",  label: "Dashboard"           },
   { id: "alerts",     icon: "⚡", label: "Avisos Inteligentes"  },
@@ -1900,7 +1764,6 @@ function AppRoot() {
     <div style={{ display: "flex", minHeight: "100vh", background: T.bg, fontFamily: "'Trebuchet MS','Segoe UI',system-ui,sans-serif" }}>
       <CostToast />
       <UpdateToast />
-
       <aside style={{ width: collapsed ? 58 : 228, background: "#0E0A08", borderRight: T.border, display: "flex", flexDirection: "column", flexShrink: 0, transition: "width 0.2s ease", position: "sticky", top: 0, height: "100vh", overflow: "hidden" }}>
         <div style={{ padding: "19px 13px 15px", borderBottom: T.border, display: "flex", alignItems: "center", gap: 10, justifyContent: collapsed ? "center" : "flex-start" }}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: T.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: T.black, flexShrink: 0, fontFamily: "Georgia,serif" }}>S</div>
@@ -1911,7 +1774,6 @@ function AppRoot() {
             </div>
           )}
         </div>
-
         <nav style={{ flex: 1, padding: "7px 5px", display: "flex", flexDirection: "column", gap: 2 }}>
           {NAV.map(({ id, icon, label }) => {
             const active = tab === id;
@@ -1926,7 +1788,6 @@ function AppRoot() {
             );
           })}
         </nav>
-
         <div style={{ padding: "7px 5px", borderTop: T.border }}>
           <button onClick={() => setCollapsed(c => !c)} style={{ width: "100%", padding: "7px", borderRadius: 7, border: "none", background: "transparent", cursor: "pointer", color: T.subtle, fontSize: 11, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 5 }}>
             <span style={{ fontSize: 11 }}>{collapsed ? "→" : "←"}</span>
@@ -1934,7 +1795,6 @@ function AppRoot() {
           </button>
         </div>
       </aside>
-
       <main style={{ flex: 1, overflowY: "auto", padding: "34px 38px", minWidth: 0 }}>
         {tab === "dashboard"  && <Dashboard  period={period} setPeriod={setPeriod} />}
         {tab === "alerts"     && <Alerts />}
@@ -1957,4 +1817,8 @@ function SuburbanosApp() {
   );
 }
 
-export default SuburbanosApp;
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<SuburbanosApp />);
+</script>
+</body>
+</html>
